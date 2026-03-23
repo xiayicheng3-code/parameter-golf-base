@@ -75,3 +75,82 @@ Things to compare next:
 - exact sliding vs the older chunk-right-edge approximation
 - shifted heads only in early layers vs all layers
 - different shifted offset sets, such as `1,2` or `1,2,4,8`
+
+## Preferred CLI Workflow
+
+For this project, the preferred workflow is:
+
+1. Push your latest local git changes from your own machine.
+2. SSH into the cloud machine yourself.
+3. Paste one cloud-side command block that includes both dataset loading and training.
+
+Example local sync reminder:
+
+```bash
+cd "/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base"
+git add .
+git commit -m "update shifted attention experiment"
+git push https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
+```
+
+Example cloud-side block for a sliding-window smoke run:
+
+```bash
+cd /workspace
+
+if [ ! -d /workspace/parameter-golf-base ]; then
+  git clone https://github.com/xiayicheng3-code/parameter-golf-base.git
+fi
+
+cd /workspace/parameter-golf-base
+git pull --ff-only https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
+
+python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+
+cd /workspace/parameter-golf-base/experiments/shifted_attention
+
+RUN_ID=exact_sliding_smoke \
+DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+ITERATIONS=200 \
+VAL_LOSS_EVERY=0 \
+TRAIN_BATCH_TOKENS=131072 \
+TRAIN_SEQ_LEN=2048 \
+ATTENTION_IMPL=sliding_gqa \
+SLIDING_WINDOW_SIZE=512 \
+SLIDING_CHUNK_SIZE=128 \
+python3 train_gpt.py | tee log.txt
+```
+
+Example cloud-side block for a shifted-attention smoke run:
+
+```bash
+cd /workspace
+
+if [ ! -d /workspace/parameter-golf-base ]; then
+  git clone https://github.com/xiayicheng3-code/parameter-golf-base.git
+fi
+
+cd /workspace/parameter-golf-base
+git pull --ff-only https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
+
+python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+
+cd /workspace/parameter-golf-base/experiments/shifted_attention
+
+RUN_ID=shifted_attn_smoke \
+DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+ITERATIONS=200 \
+VAL_LOSS_EVERY=0 \
+TRAIN_BATCH_TOKENS=131072 \
+TRAIN_SEQ_LEN=2048 \
+ATTENTION_IMPL=shifted_gqa \
+SLIDING_WINDOW_SIZE=512 \
+SLIDING_CHUNK_SIZE=128 \
+SHIFTED_ATTENTION_LAYERS=3 \
+SHIFTED_ATTENTION_OFFSETS=1,2,3,4 \
+python3 train_gpt.py | tee log.txt
+```

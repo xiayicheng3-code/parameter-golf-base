@@ -1,0 +1,83 @@
+cd /workspace/parameter-golf-base/experiments/shifted_attention
+
+RUN_ID=shifted_attn_smoke \
+DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+ITERATIONS=200 \
+VAL_LOSS_EVERY=0 \
+TRAIN_BATCH_TOKENS=131072 \
+TRAIN_SEQ_LEN=2048 \
+ATTENTION_IMPL=shifted_gqa \
+SLIDING_WINDOW_SIZE=512 \
+python3 train_gpt.py | tee log.txt\
+From https://github.com/xiayicheng3-code/parameter-golf-base
+ * branch            HEAD       -> FETCH_HEAD
+Already up to date.
+logs/shifted_attn_smoke.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:1
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:17059912
+world_size:1 grad_accum_steps:8
+sdp_backends:cudnn=False flash=True mem_efficient=False math=True
+attention_mode:shifted_gqa num_heads:8 num_kv_heads:4 shifted_attention_layers:3 shifted_attention_offsets:[1, 2, 3, 4] sliding_window_size:512 sliding_chunk_size:128
+tie_embeddings:True embed_lr:0.05 head_lr:0.0 matrix_lr:0.04 scalar_lr:0.04
+train_batch_tokens:131072 train_seq_len:2048 iterations:200 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+init_impl:stateless_ortho_v1 init_seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/200 train_loss:6.9385 train_time:938ms step_avg:937.51ms
+step:2/200 train_loss:17.0158 train_time:1886ms step_avg:942.86ms
+step:3/200 train_loss:11.5382 train_time:2833ms step_avg:944.26ms
+step:4/200 train_loss:7.4630 train_time:3777ms step_avg:944.34ms
+step:5/200 train_loss:6.2510 train_time:4723ms step_avg:944.69ms
+step:6/200 train_loss:6.0865 train_time:5673ms step_avg:945.52ms
+step:7/200 train_loss:6.0355 train_time:6620ms step_avg:945.77ms
+step:8/200 train_loss:6.0014 train_time:7573ms step_avg:946.61ms
+step:9/200 train_loss:5.9786 train_time:8520ms step_avg:946.64ms
+step:10/200 train_loss:5.9499 train_time:9471ms step_avg:947.12ms
+step:200/200 train_loss:2.8692 train_time:188277ms step_avg:941.39ms
+step:200/200 val_loss:2.9117 val_bpb:1.7245 train_time:188283ms step_avg:941.41ms
+peak memory allocated: 5110 MiB reserved: 5954 MiB
+Serialized model: 67219287 bytes
+Code size: 70926 bytes
+Total submission size: 67290213 bytes
+Serialized model raw_int8: 9739927 bytes (payload:17178912 raw_torch:17224025 payload_ratio:3.91x)
+Total submission size raw_int8: 9810853 bytes
+final_raw_int8_roundtrip val_loss:2.9247 val_bpb:1.7322 eval_time:175906ms
+final_raw_int8_roundtrip_exact val_loss:2.92473768 val_bpb:1.73219440
+Serialized model delta_int8: 9134203 bytes (payload:17178912 raw_torch:17224025 payload_ratio:3.91x)
+Total submission size delta_int8: 9205129 bytes
+final_delta_int8_roundtrip val_loss:2.9213 val_bpb:1.7301 eval_time:176164ms
+final_delta_int8_roundtrip_exact val_loss:2.92128230 val_bpb:1.73014793
+Serialized model raw_mixed: 5208971 bytes (payload:12392736 raw_torch:12438683 payload_ratio:5.42x)
+Total submission size raw_mixed: 5279897 bytes
+final_raw_mixed_roundtrip val_loss:3.6440 val_bpb:2.1582 eval_time:175850ms
+final_raw_mixed_roundtrip_exact val_loss:3.64402649 val_bpb:2.15819774
+Serialized model delta_mixed: 4401460 bytes (payload:12392736 raw_torch:12438683 payload_ratio:5.42x)
+Total submission size delta_mixed: 4472386 bytes
+final_delta_mixed_roundtrip val_loss:3.6619 val_bpb:2.1688 eval_time:176066ms
+final_delta_mixed_roundtrip_exact val_loss:3.66191769 val_bpb:2.16879392
+compression_summary raw_int8:ok delta_int8:ok raw_mixed:ok delta_mixed:ok
+root@55c41fd8e3df:/workspace/parameter-golf-base/experiments/shifted_attention# Connection to 100.65.19.220 closed.
+Connection to ssh.runpod.io closed.

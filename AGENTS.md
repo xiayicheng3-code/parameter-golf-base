@@ -36,6 +36,8 @@ Read [README.md](/Users/yichengxia/神经网络_机器学习/parameter_golf/para
 - Before giving a pasteable remote training command, first include the command(s) to sync the latest local git state to the cloud machine, then include the fixed dataset loading step, then the training command.
 - When presenting this workflow, first remind the user in natural language to push local git changes from their own machine and to connect to the cloud machine over SSH themselves.
 - After that reminder, provide one pasteable cloud-side command block that keeps the dataset loading logic and the training logic together in the same response.
+- Under a fixed wallclock cap, the effective stop condition is time, so the configured iteration count can be set generously high. Do not prematurely cap runs by choosing a low `ITERATIONS` value when the real constraint is wallclock.
+- When giving human-operated CLI examples, prefer a readable training log cadence. Use `TRAIN_LOG_EVERY=25` by default unless there is a clear reason to choose a different interval.
 - For local smoke tests, smaller subsets are fine; for claims about results, use the challenge dataset setup described in the README.
 - Prefer changes that keep the training script runnable from inside a submission folder without hidden external dependencies.
 - If modifying logging or outputs, keep the final metrics easy to parse: `val_loss`, `val_bpb`, and compressed artifact size are essential.
