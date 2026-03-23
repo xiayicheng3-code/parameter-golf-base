@@ -788,6 +788,8 @@ class SlidingWindowSelfAttention(nn.Module):
         q = apply_rotary_emb(q, cos, sin)
         k = apply_rotary_emb(k, cos, sin)
         q = q * self.q_gain.to(dtype=q.dtype)[None, :, None, None]
+        k = expand_kv_heads(k, self.num_heads)
+        v = expand_kv_heads(v, self.num_heads)
 
         chunks: list[Tensor] = []
         for qs in range(0, seqlen, self.chunk_size):
@@ -810,7 +812,7 @@ class SlidingWindowSelfAttention(nn.Module):
                 v_chunk,
                 attn_mask=mask,
                 is_causal=False,
-                enable_gqa=(self.num_kv_heads != self.num_heads),
+                enable_gqa=False,
             )
             chunks.append(y_chunk)
 
@@ -1199,10 +1201,19 @@ def main() -> None:
     torch.backends.cudnn.allow_tf32 = True
     from torch.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
 
-    enable_cudnn_sdp(args.enable_cudnn_sdp)
-    enable_flash_sdp(args.enable_flash_sdp)
-    enable_mem_efficient_sdp(args.enable_mem_efficient_sdp)
-    enable_math_sdp(args.enable_math_sdp)
+    use_cudnn_sdp = args.enable_cudnn_sdp
+    use_flash_sdp = args.enable_flash_sdp
+    use_mem_efficient_sdp = args.enable_mem_efficient_sdp
+    use_math_sdp = args.enable_math_sdp
+    if args.attention_impl in {"sliding_gqa", "shifted_gqa"} and not (use_mem_efficient_sdp or use_math_sdp):
+        # Masked sliding-window attention is not guaranteed to have a valid flash backend
+        # on every GPU / PyTorch combination, so keep a safe fallback enabled.
+        use_math_sdp = True
+
+    enable_cudnn_sdp(use_cudnn_sdp)
+    enable_flash_sdp(use_flash_sdp)
+    enable_mem_efficient_sdp(use_mem_efficient_sdp)
+    enable_math_sdp(use_math_sdp)
 
     logfile = None
     if master_process:
@@ -1323,10 +1334,10 @@ def main() -> None:
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
     log0(
         "sdp_backends:"
-        f"cudnn={args.enable_cudnn_sdp} "
-        f"flash={args.enable_flash_sdp} "
-        f"mem_efficient={args.enable_mem_efficient_sdp} "
-        f"math={args.enable_math_sdp}"
+        f"cudnn={use_cudnn_sdp} "
+        f"flash={use_flash_sdp} "
+        f"mem_efficient={use_mem_efficient_sdp} "
+        f"math={use_math_sdp}"
     )
     if args.attention_impl == "gqa":
         log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
