@@ -23,6 +23,11 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+try:
+    from flash_attn import flash_attn_func
+except ImportError:
+    flash_attn_func = None
+
 # -----------------------------
 # HYPERPARAMETERS
 # -----------------------------
@@ -694,14 +699,20 @@ class CausalSelfAttention(nn.Module):
         q = apply_rotary_emb(q, cos, sin)
         k = apply_rotary_emb(k, cos, sin)
         q = q * self.q_gain.to(dtype=q.dtype)[None, :, None, None]
-        y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            is_causal=True,
-            enable_gqa=(self.num_kv_heads != self.num_heads),
-        )
+        if flash_attention_2_supports(q.dtype, x.device):
+            q_fa = q.transpose(1, 2).contiguous()
+            k_fa = k.transpose(1, 2).contiguous()
+            v_fa = v.transpose(1, 2).contiguous()
+            y = flash_attention_2(q_fa, k_fa, v_fa, causal=True).transpose(1, 2)
+        else:
+            y = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                is_causal=True,
+                enable_gqa=(self.num_kv_heads != self.num_heads),
+            )
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
         return self.proj(y)
 
@@ -735,6 +746,21 @@ def shift_expanded_keys(k: Tensor, head_shifts: tuple[int, ...]) -> Tensor:
         if shift < k.size(2):
             shifted[:, head_idx, shift:, :] = k[:, head_idx, :-shift, :]
     return shifted
+
+
+def flash_attention_2_supports(dtype: torch.dtype, device: torch.device) -> bool:
+    return flash_attn_func is not None and device.type == "cuda" and dtype in {torch.float16, torch.bfloat16}
+
+
+def flash_attention_2(
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    *,
+    causal: bool,
+    window_size: tuple[int, int] = (-1, -1),
+) -> Tensor:
+    return flash_attn_func(q, k, v, dropout_p=0.0, causal=causal, window_size=window_size)
 
 
 class SlidingWindowSelfAttention(nn.Module):
@@ -782,35 +808,49 @@ class SlidingWindowSelfAttention(nn.Module):
         q = apply_rotary_emb(q, cos, sin)
         k = apply_rotary_emb(k, cos, sin)
         q = q * self.q_gain.to(dtype=q.dtype)[None, :, None, None]
-        k = expand_kv_heads(k, self.num_heads)
-        v = expand_kv_heads(v, self.num_heads)
 
-        chunks: list[Tensor] = []
-        for qs in range(0, seqlen, self.chunk_size):
-            qe = min(qs + self.chunk_size, seqlen)
-            ctx_start = max(0, qs - self.window_size + 1)
-            q_chunk = q[:, :, qs:qe, :]
-            k_chunk = k[:, :, ctx_start:qe, :]
-            v_chunk = v[:, :, ctx_start:qe, :]
-            mask = build_sliding_window_causal_mask(
-                qe - qs,
-                qe - ctx_start,
-                qs,
-                ctx_start,
-                self.window_size,
-                x.device,
+        if flash_attention_2_supports(q.dtype, x.device):
+            q_fa = q.transpose(1, 2).contiguous()
+            k_fa = k.transpose(1, 2).contiguous()
+            v_fa = v.transpose(1, 2).contiguous()
+            y = flash_attention_2(
+                q_fa,
+                k_fa,
+                v_fa,
+                causal=False,
+                window_size=(self.window_size - 1, 0),
             )
-            y_chunk = F.scaled_dot_product_attention(
-                q_chunk,
-                k_chunk,
-                v_chunk,
-                attn_mask=mask,
-                is_causal=False,
-                enable_gqa=False,
-            )
-            chunks.append(y_chunk)
+            y = y.transpose(1, 2)
+        else:
+            k = expand_kv_heads(k, self.num_heads)
+            v = expand_kv_heads(v, self.num_heads)
 
-        y = torch.cat(chunks, dim=2)
+            chunks: list[Tensor] = []
+            for qs in range(0, seqlen, self.chunk_size):
+                qe = min(qs + self.chunk_size, seqlen)
+                ctx_start = max(0, qs - self.window_size + 1)
+                q_chunk = q[:, :, qs:qe, :]
+                k_chunk = k[:, :, ctx_start:qe, :]
+                v_chunk = v[:, :, ctx_start:qe, :]
+                mask = build_sliding_window_causal_mask(
+                    qe - qs,
+                    qe - ctx_start,
+                    qs,
+                    ctx_start,
+                    self.window_size,
+                    x.device,
+                )
+                y_chunk = F.scaled_dot_product_attention(
+                    q_chunk,
+                    k_chunk,
+                    v_chunk,
+                    attn_mask=mask,
+                    is_causal=False,
+                    enable_gqa=False,
+                )
+                chunks.append(y_chunk)
+
+            y = torch.cat(chunks, dim=2)
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
         return self.proj(y)
 
@@ -886,32 +926,47 @@ class ShiftedWindowSelfAttention(nn.Module):
         v = expand_kv_heads(v, self.num_heads)
         k = shift_expanded_keys(k, self.head_shifts)
 
-        chunks: list[Tensor] = []
-        for qs in range(0, seqlen, self.chunk_size):
-            qe = min(qs + self.chunk_size, seqlen)
-            ctx_start = max(0, qs - self.window_size + 1)
-            q_chunk = q[:, :, qs:qe, :]
-            k_chunk = k[:, :, ctx_start:qe, :]
-            v_chunk = v[:, :, ctx_start:qe, :]
-            mask = build_sliding_window_causal_mask(
-                qe - qs,
-                qe - ctx_start,
-                qs,
-                ctx_start,
-                self.window_size,
-                x.device,
+        if flash_attention_2_supports(q.dtype, x.device):
+            q_fa = q.transpose(1, 2).contiguous()
+            k_fa = k.transpose(1, 2).contiguous()
+            v_fa = v.transpose(1, 2).contiguous()
+            # TODO: Evaluate replacing this with the FlashAttention-3 Hopper interface once
+            # the repo standardizes on FA3 and we can verify numerical/perf behavior here.
+            y = flash_attention_2(
+                q_fa,
+                k_fa,
+                v_fa,
+                causal=False,
+                window_size=(self.window_size - 1, 0),
             )
-            y_chunk = F.scaled_dot_product_attention(
-                q_chunk,
-                k_chunk,
-                v_chunk,
-                attn_mask=mask,
-                is_causal=False,
-                enable_gqa=False,
-            )
-            chunks.append(y_chunk)
+            y = y.transpose(1, 2)
+        else:
+            chunks: list[Tensor] = []
+            for qs in range(0, seqlen, self.chunk_size):
+                qe = min(qs + self.chunk_size, seqlen)
+                ctx_start = max(0, qs - self.window_size + 1)
+                q_chunk = q[:, :, qs:qe, :]
+                k_chunk = k[:, :, ctx_start:qe, :]
+                v_chunk = v[:, :, ctx_start:qe, :]
+                mask = build_sliding_window_causal_mask(
+                    qe - qs,
+                    qe - ctx_start,
+                    qs,
+                    ctx_start,
+                    self.window_size,
+                    x.device,
+                )
+                y_chunk = F.scaled_dot_product_attention(
+                    q_chunk,
+                    k_chunk,
+                    v_chunk,
+                    attn_mask=mask,
+                    is_causal=False,
+                    enable_gqa=False,
+                )
+                chunks.append(y_chunk)
 
-        y = torch.cat(chunks, dim=2)
+            y = torch.cat(chunks, dim=2)
         y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
         return self.proj(y)
 
@@ -1199,7 +1254,8 @@ def main() -> None:
     use_flash_sdp = args.enable_flash_sdp
     use_mem_efficient_sdp = args.enable_mem_efficient_sdp
     use_math_sdp = args.enable_math_sdp
-    if args.attention_impl in {"sliding_gqa", "shifted_gqa"} and not (use_mem_efficient_sdp or use_math_sdp):
+    uses_fa2_attention = flash_attn_func is not None
+    if args.attention_impl in {"sliding_gqa", "shifted_gqa"} and not uses_fa2_attention and not (use_mem_efficient_sdp or use_math_sdp):
         # Masked sliding-window attention is not guaranteed to have a valid flash backend
         # on every GPU / PyTorch combination, so keep a safe fallback enabled.
         use_math_sdp = True
@@ -1333,6 +1389,7 @@ def main() -> None:
         f"mem_efficient={use_mem_efficient_sdp} "
         f"math={use_math_sdp}"
     )
+    log0(f"flash_attention_2:{uses_fa2_attention}")
     if args.attention_impl == "gqa":
         log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
     elif args.attention_impl == "sliding_gqa":
