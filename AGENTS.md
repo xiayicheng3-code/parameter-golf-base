@@ -30,7 +30,8 @@ Read [README.md](/Users/yichengxia/神经网络_机器学习/parameter_golf/para
 - Be careful with tokenizer or dataset edits. Small bugs there can produce invalid but superficially better scores.
 - Preserve reproducibility. Record exact environment variables, commands, dataset variant, tokenizer path, and output artifact sizes.
 - Assume final evaluation runs in the provided Runpod-style environment with dependencies preinstalled.
-- When running on Runpod, prefer using Runpod Secrets for GitHub credentials if cloud-side `git push` is needed; in this project the configured token secret is `RUNPOD_SECRET_GITHUB_TOKEN`. Remote read and write access had already been configured
+- When running on Runpod, prefer using Runpod Secrets for GitHub credentials if cloud-side `git push` is needed; in this project the configured token secret is `RUNPOD_SECRET_GITHUB_TOKEN`. Remote read and write access had already been configured for this token.
+- The canonical GitHub remote for this project is `https://github.com/xiayicheng3-code/parameter-golf-base.git`; use this exact repository when giving sync commands for cloud machines.
 - For this project, prefer simple copy-paste CLI workflows over automation. Default to giving the user complete pasteable commands instead of running remote experiment orchestration automatically.
 - Before giving a pasteable remote training command, first include the command(s) to sync the latest local git state to the cloud machine, then include the fixed dataset loading step, then the training command.
 - For local smoke tests, smaller subsets are fine; for claims about results, use the challenge dataset setup described in the README.

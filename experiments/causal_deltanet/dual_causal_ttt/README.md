@@ -67,6 +67,23 @@ VAL_LOSS_EVERY=1000 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
+Exact command for the longer-sequence 8xH100 run discussed in this workspace:
+
+```bash
+cd /workspace/parameter-golf/experiments/causal_deltanet/dual_causal_ttt
+./prepare_data.sh
+RUN_ID=shared_delta_slide_seq10240_v0 \
+TRAIN_SEQ_LEN=10240 \
+TRAIN_BATCH_TOKENS=655360 \
+TRAIN_LOG_EVERY=100 \
+./run_8xh100_seq10240.sh
+```
+
+Notes:
+- `prepare_data.sh` runs from the repo root and downloads the published `sp1024` dataset plus tokenizer into `data/`.
+- `run_8xh100_seq10240.sh` assumes you launch it from this experiment folder and uses paths relative to this folder.
+- Override `NPROC_PER_NODE` if you want to smoke-test on fewer GPUs first, for example `NPROC_PER_NODE=1 ./run_8xh100_seq10240.sh`.
+
 Key things to measure next:
 - throughput vs full-attention baseline at matched `TRAIN_SEQ_LEN`
 - whether longer `TRAIN_SEQ_LEN` actually helps once attention context is capped at `SLIDING_WINDOW_SIZE`
