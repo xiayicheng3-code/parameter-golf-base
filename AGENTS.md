@@ -34,6 +34,8 @@ Read [README.md](/Users/yichengxia/神经网络_机器学习/parameter_golf/para
 - The canonical GitHub remote for this project is `https://github.com/xiayicheng3-code/parameter-golf-base.git`; use this exact repository when giving sync commands for cloud machines.
 - For this project, prefer simple copy-paste CLI workflows over automation. Default to giving the user complete pasteable commands instead of running remote experiment orchestration automatically.
 - Before giving a pasteable remote training command, first include the command(s) to sync the latest local git state to the cloud machine, then include the fixed dataset loading step, then the training command.
+- When presenting this workflow, first remind the user in natural language to push local git changes from their own machine and to connect to the cloud machine over SSH themselves.
+- After that reminder, provide one pasteable cloud-side command block that keeps the dataset loading logic and the training logic together in the same response.
 - For local smoke tests, smaller subsets are fine; for claims about results, use the challenge dataset setup described in the README.
 - Prefer changes that keep the training script runnable from inside a submission folder without hidden external dependencies.
 - If modifying logging or outputs, keep the final metrics easy to parse: `val_loss`, `val_bpb`, and compressed artifact size are essential.
