@@ -16,15 +16,12 @@ Read [README.md](/Users/yichengxia/神经网络_机器学习/parameter_golf/para
 - Validation is tokenizer-agnostic and based on FineWeb validation compression (`val_bpb`), not just cross-entropy loss.
 - New SOTA submissions must beat the previous record by at least **0.005 nats** and include evidence strong enough to support `p < 0.01`, unless the change is purely systems optimization.
 - If tokenizer or dataset handling changes, correctness of `val_bpb` must be demonstrated convincingly.
-- OpenAI may disqualify submissions that violate the spirit of the challenge, including unfair use of external compute.
 
 ## Repo Expectations
 
 - Baseline scripts such as [`train_gpt.py`](/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base/train_gpt.py) and [`train_gpt_mlx.py`](/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base/train_gpt_mlx.py) are starting points, not where final SOTA work should live.
-- Strong experimental runs and final submissions belong under [`records/`](/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base/records), with their own `README.md`, `submission.json`, logs, and runnable training code.
+- The leaderboard solutions belong under [`records/`](/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base/records), with their own `README.md`, `submission.json`, logs, and runnable training code. You can read about other's ideas here, but do not modify in this directory.
 - All experiments should start in [`experiments/`](/Users/yichengxia/神经网络_机器学习/parameter_golf/parameter-golf-base/experiments), with their own `README.md`, `submission.json`, logs, and runnable training code.
-- PRs that improve the core scripts are acceptable only if they do not significantly increase complexity.
-- Do not assume the MLX script is feature-equivalent to the CUDA script. It is a portability path for local iteration on Apple Silicon.
 
 ## Practical Guidance For Agents
 
@@ -33,6 +30,9 @@ Read [README.md](/Users/yichengxia/神经网络_机器学习/parameter_golf/para
 - Be careful with tokenizer or dataset edits. Small bugs there can produce invalid but superficially better scores.
 - Preserve reproducibility. Record exact environment variables, commands, dataset variant, tokenizer path, and output artifact sizes.
 - Assume final evaluation runs in the provided Runpod-style environment with dependencies preinstalled.
+- When running on Runpod, prefer using Runpod Secrets for GitHub credentials if cloud-side `git push` is needed; in this project the configured token secret is `RUNPOD_SECRET_GITHUB_TOKEN`. Remote read and write access had already been configured
+- For this project, prefer simple copy-paste CLI workflows over automation. Default to giving the user complete pasteable commands instead of running remote experiment orchestration automatically.
+- Before giving a pasteable remote training command, first include the command(s) to sync the latest local git state to the cloud machine, then include the fixed dataset loading step, then the training command.
 - For local smoke tests, smaller subsets are fine; for claims about results, use the challenge dataset setup described in the README.
 - Prefer changes that keep the training script runnable from inside a submission folder without hidden external dependencies.
 - If modifying logging or outputs, keep the final metrics easy to parse: `val_loss`, `val_bpb`, and compressed artifact size are essential.

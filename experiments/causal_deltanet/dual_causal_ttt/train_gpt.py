@@ -80,6 +80,10 @@ class Hyperparameters:
     use_shared_delta = bool(int(os.environ.get("USE_SHARED_DELTA", "1")))
     delta_use_qk_norm = bool(int(os.environ.get("DELTA_USE_QK_NORM", "1")))
     delta_use_output_proj = bool(int(os.environ.get("DELTA_USE_OUTPUT_PROJ", "0")))
+    enable_cudnn_sdp = bool(int(os.environ.get("ENABLE_CUDNN_SDP", "0")))
+    enable_flash_sdp = bool(int(os.environ.get("ENABLE_FLASH_SDP", "1")))
+    enable_mem_efficient_sdp = bool(int(os.environ.get("ENABLE_MEM_EFFICIENT_SDP", "0")))
+    enable_math_sdp = bool(int(os.environ.get("ENABLE_MATH_SDP", "0")))
 
     # Optimizer hyperparameters.
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
@@ -723,8 +727,29 @@ class DualCausalDelta(nn.Module):
         k_up = F.pad(q_up[:, :-1, :], (0, 0, 1, 0), value=0.0)
         k_gate = F.pad(q_gate[:, :-1, :], (0, 0, 1, 0), value=0.0)
 
-        o_up, _ = chunk_delta_rule(q_up, k_up, v_up, initial_state=None)
-        o_gate, _ = chunk_delta_rule(q_gate, k_gate, v_gate, initial_state=None)
+        # Newer flash-linear-attention releases expect `[B, T, H, K/V]` plus an
+        # explicit beta tensor, and the current kernel caps per-head width at 256.
+        # We therefore shard the model dimension into equal-sized delta heads.
+        num_delta_heads = max(1, math.ceil(q_up.size(-1) / 256))
+        if q_up.size(-1) % num_delta_heads != 0:
+            raise ValueError(f"Delta width {q_up.size(-1)} must split evenly into delta heads")
+        delta_head_dim = q_up.size(-1) // num_delta_heads
+        if delta_head_dim > 256:
+            raise ValueError(f"Delta head dim {delta_head_dim} exceeds kernel limit")
+
+        q_up_h = q_up.view(q_up.size(0), q_up.size(1), num_delta_heads, delta_head_dim)
+        k_up_h = k_up.view(k_up.size(0), k_up.size(1), num_delta_heads, delta_head_dim)
+        v_up_h = v_up.view(v_up.size(0), v_up.size(1), num_delta_heads, delta_head_dim)
+        q_gate_h = q_gate.view(q_gate.size(0), q_gate.size(1), num_delta_heads, delta_head_dim)
+        k_gate_h = k_gate.view(k_gate.size(0), k_gate.size(1), num_delta_heads, delta_head_dim)
+        v_gate_h = v_gate.view(v_gate.size(0), v_gate.size(1), num_delta_heads, delta_head_dim)
+        beta_up = torch.ones(q_up_h.shape[:-1], device=q_up.device, dtype=q_up.dtype)
+        beta_gate = torch.ones(q_gate_h.shape[:-1], device=q_gate.device, dtype=q_gate.dtype)
+
+        o_up, _ = chunk_delta_rule(q_up_h, k_up_h, v_up_h, beta_up, initial_state=None)
+        o_gate, _ = chunk_delta_rule(q_gate_h, k_gate_h, v_gate_h, beta_gate, initial_state=None)
+        o_up = o_up.reshape_as(q_up)
+        o_gate = o_gate.reshape_as(q_gate)
         out = o_up * F.silu(o_gate)
         return self.proj(out) if self.proj is not None else out
 
@@ -953,10 +978,10 @@ def main() -> None:
     torch.backends.cudnn.allow_tf32 = True
     from torch.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
 
-    enable_cudnn_sdp(False)
-    enable_flash_sdp(True)
-    enable_mem_efficient_sdp(False)
-    enable_math_sdp(False)
+    enable_cudnn_sdp(args.enable_cudnn_sdp)
+    enable_flash_sdp(args.enable_flash_sdp)
+    enable_mem_efficient_sdp(args.enable_mem_efficient_sdp)
+    enable_math_sdp(args.enable_math_sdp)
 
     logfile = None
     if master_process:
@@ -1037,7 +1062,16 @@ def main() -> None:
             module.float()
     restore_low_dim_params_to_fp32(base_model)
     compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
-    model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
+    model: nn.Module = (
+        DDP(
+            compiled_model,
+            device_ids=[local_rank],
+            broadcast_buffers=False,
+            find_unused_parameters=not args.use_shared_delta,
+        )
+        if distributed
+        else compiled_model
+    )
 
     # Optimizer split:
     # - token embedding (Adam) uses EMBED_LR
@@ -1091,7 +1125,13 @@ def main() -> None:
     n_params = sum(p.numel() for p in base_model.parameters())
     log0(f"model_params:{n_params}")
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
-    log0("sdp_backends:cudnn=False flash=True mem_efficient=False math=False")
+    log0(
+        "sdp_backends:"
+        f"cudnn={args.enable_cudnn_sdp} "
+        f"flash={args.enable_flash_sdp} "
+        f"mem_efficient={args.enable_mem_efficient_sdp} "
+        f"math={args.enable_math_sdp}"
+    )
     if args.attention_impl == "gqa":
         log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
     elif args.attention_impl == "sliding_gqa":
