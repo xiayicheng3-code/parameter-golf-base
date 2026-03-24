@@ -1,0 +1,27 @@
+MLP_MULT=4.0
+
+step:1150/1200 train_loss:2.3245 train_time:342262ms step_avg:297.62ms
+step:1175/1200 train_loss:2.2261 train_time:349676ms step_avg:297.60ms
+step:1200/1200 train_loss:2.3314 train_time:357096ms step_avg:297.58ms
+step:1200/1200 val_loss:2.2784 val_bpb:1.3494 train_time:357100ms step_avg:297.58ms
+peak memory allocated: 8448 MiB reserved: 9140 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.2873 val_bpb:1.3547 eval_time:18747ms
+Serialized model: 129247241 bytes
+Code size: 87442 bytes
+Serialized model delta_attn_int8_mlp_int6: 13964534 bytes (source:delta_hybrid payload:33034606 raw_torch:33091779 payload_ratio:3.91x)
+Total submission size delta_attn_int8_mlp_int6: 14051976 bytes
+final_delta_attn_int8_mlp_int6_roundtrip val_loss:2.3340 val_bpb:1.3823 eval_time:18622ms
+final_delta_attn_int8_mlp_int6_roundtrip_exact val_loss:2.33402762 val_bpb:1.38234263
+Serialized model delta_attn_int6_mlp_int6: 11753304 bytes (source:delta_hybrid payload:33034606 raw_torch:33091779 payload_ratio:3.91x)
+Total submission size delta_attn_int6_mlp_int6: 11840746 bytes
+final_delta_attn_int6_mlp_int6_roundtrip val_loss:2.3540 val_bpb:1.3942 eval_time:18570ms
+final_delta_attn_int6_mlp_int6_roundtrip_exact val_loss:2.35401110 val_bpb:1.39417797
+Serialized model delta_attn_int6_mlp_int4: 5975583 bytes (source:delta_hybrid payload:21500270 raw_torch:21557891 payload_ratio:6.01x)
+Total submission size delta_attn_int6_mlp_int4: 6063025 bytes
+final_delta_attn_int6_mlp_int4_roundtrip val_loss:6.1177 val_bpb:3.6233 eval_time:18471ms
+final_delta_attn_int6_mlp_int4_roundtrip_exact val_loss:6.11773098 val_bpb:3.62326488
+Serialized model raw_gptq: 12272637 bytes (source:raw payload:33034606 raw_torch:33091651 payload_ratio:3.91x)
+Total submission size raw_gptq: 12360079 bytes
+final_raw_gptq_roundtrip val_loss:2.3504 val_bpb:1.3920 eval_time:18539ms
+final_raw_gptq_roundtrip_exact val_loss:2.35037539 val_bpb:1.39202469
