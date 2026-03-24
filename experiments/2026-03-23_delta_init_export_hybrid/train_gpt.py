@@ -138,7 +138,8 @@ def stateless_randn(shape: tuple[int, ...], base_seed: int, *parts: str) -> Tens
 
 
 def stateless_normal_(tensor: Tensor, base_seed: int, name: str, std: float) -> None:
-    tensor.copy_(stateless_randn(tuple(tensor.shape), base_seed, name, "normal").to(dtype=tensor.dtype) * std)
+    with torch.no_grad():
+        tensor.copy_(stateless_randn(tuple(tensor.shape), base_seed, name, "normal").to(dtype=tensor.dtype) * std)
 
 
 def stateless_orthogonal_(tensor: Tensor, base_seed: int, name: str, gain: float = 1.0) -> None:
@@ -152,7 +153,8 @@ def stateless_orthogonal_(tensor: Tensor, base_seed: int, name: str, gain: float
     q *= torch.where(ph == 0, torch.ones_like(ph), ph).unsqueeze(0)
     if transposed:
         q = q.t()
-    tensor.copy_(q.to(dtype=tensor.dtype) * gain)
+    with torch.no_grad():
+        tensor.copy_(q.to(dtype=tensor.dtype) * gain)
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.bfloat16()
