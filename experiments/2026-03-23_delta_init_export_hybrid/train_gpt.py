@@ -72,7 +72,7 @@ class Hyperparameters:
     beta2 = float(os.environ.get("BETA2", 0.95))
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
-    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+    eval_stride = int(os.environ.get("EVAL_STRIDE", 0))
     mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
     mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
     muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
@@ -1760,7 +1760,6 @@ def main() -> None:
     sd_cpu = clone_state_dict_to_cpu(export_sd)
     delta_payload_cpu, delta_modes = make_delta_state_dict(sd_cpu, init_state_cpu)
     compression_results: list[tuple[str, str]] = []
-    sw_seq_len = effective_eval_seq_len
     for scheme_name in args.compression_schemes:
         try:
             scheme_def = SCHEME_DEFS.get(scheme_name)
@@ -1836,21 +1835,6 @@ def main() -> None:
                 f"eval_time:{1000.0 * (time.perf_counter() - t_qeval):.0f}ms"
             )
             log0(f"final_{scheme_name}_roundtrip_exact val_loss:{q_val_loss:.8f} val_bpb:{q_val_bpb:.8f}")
-            if args.eval_stride > 0 and args.eval_stride < sw_seq_len:
-                torch.cuda.synchronize()
-                t_slide = time.perf_counter()
-                sw_val_loss, sw_val_bpb = eval_val_sliding(
-                    args, base_model, rank, world_size, device,
-                    val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
-                    stride=args.eval_stride,
-                    eval_seq_len=sw_seq_len,
-                )
-                torch.cuda.synchronize()
-                log0(
-                    f"final_{scheme_name}_sliding_window val_loss:{sw_val_loss:.4f} val_bpb:{sw_val_bpb:.4f} "
-                    f"stride:{args.eval_stride} eval_time:{1000.0 * (time.perf_counter() - t_slide):.0f}ms"
-                )
-                log0(f"final_{scheme_name}_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
             compression_results.append((scheme_name, "ok"))
         except Exception as e:
             log0(f"compression_scheme_failed name:{scheme_name} error_type:{type(e).__name__} error:{e}")

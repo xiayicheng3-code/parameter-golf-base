@@ -23,6 +23,8 @@ roundtrip separately.
   - `delta_attn_fp6_mlp_fp6`
   - `raw_gptq`
   - `raw_int_mixed`
+- Disables sliding-window eval by default (`EVAL_STRIDE=0`) so smoke tests and
+  compression sweeps reflect the normal eval path first.
 
 ## Default intent
 
