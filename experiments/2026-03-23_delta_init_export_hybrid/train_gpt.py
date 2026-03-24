@@ -54,7 +54,7 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     model_dim = int(os.environ.get("MODEL_DIM", 512))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
-    mlp_mult = float(os.environ.get("MLP_MULT", 3.0))
+    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
@@ -98,7 +98,7 @@ class Hyperparameters:
         part.strip()
         for part in os.environ.get(
             "COMPRESSION_SCHEMES",
-            "delta_attn_fp8_mlp_fp6,delta_attn_int8_mlp_int6,delta_attn_fp6_mlp_fp6,raw_gptq,raw_int_mixed",
+            "delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,delta_attn_int6_mlp_int4,raw_gptq,raw_int_mixed",
         ).split(",")
         if part.strip()
     )
@@ -396,7 +396,10 @@ def quantize_float_tensor_nbit(t: Tensor, bits: int) -> tuple[Tensor, Tensor]:
 
 
 def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
-    group_size, packed_bytes = {5: (8, 5), 6: (4, 3)}[bits]
+    if bits not in {4, 5, 6}:
+        raise ValueError(f"Unsupported lowbit pack bits={bits}")
+    group_size = math.lcm(8, bits) // bits
+    packed_bytes = (group_size * bits) // 8
     qmax = (1 << (bits - 1)) - 1
     vals = (q.detach().to("cpu", dtype=torch.int16).reshape(-1).numpy().astype(np.int16, copy=False) + qmax).astype(np.uint64)
     pad = (-vals.size) % group_size
@@ -411,7 +414,10 @@ def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
 
 
 def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
-    group_size, packed_bytes = {5: (8, 5), 6: (4, 3)}[bits]
+    if bits not in {4, 5, 6}:
+        raise ValueError(f"Unsupported lowbit unpack bits={bits}")
+    group_size = math.lcm(8, bits) // bits
+    packed_bytes = (group_size * bits) // 8
     qmax = (1 << (bits - 1)) - 1
     raw = packed.detach().to("cpu", dtype=torch.uint8).reshape(-1).numpy().astype(np.uint64, copy=False)
     if raw.size % packed_bytes != 0:
@@ -1270,6 +1276,17 @@ def quantize_tensor_by_kind(t: Tensor, kind: str) -> tuple[dict[str, object], in
     if kind == "int6":
         q, s = quantize_float_tensor_nbit(t, 6)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int4":
+        q, s = quantize_float_tensor_nbit(t, 4)
+        packed = pack_lowbit_tensor(q, 4)
+        return {
+            "kind": "int_packed",
+            "bits": 4,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "gptq_int6":
         q, s = quantize_int6_per_row(t)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
@@ -1307,6 +1324,12 @@ def dequantize_tensor_by_kind(obj: dict[str, object], orig_dtype: torch.dtype) -
         if getattr(s, "ndim", 0) > 0:
             return (q.float() * s.float().view(q.shape[0], *([1] * (q.ndim - 1)))).to(orig_dtype).contiguous()
         return (q.float() * float(s.item())).to(orig_dtype).contiguous()
+    if obj["kind"] == "int_packed":
+        q = unpack_lowbit_tensor(obj["q"], int(obj["bits"]), int(obj["numel"])).view(obj["shape"])
+        s = obj["scale"]
+        if getattr(s, "ndim", 0) > 0:
+            return (q.float() * s.float().view(q.shape[0], *([1] * (q.ndim - 1)))).to(orig_dtype).contiguous()
+        return (q.float() * float(s.item())).to(orig_dtype).contiguous()
     if obj["kind"] == "minifloat":
         bits = int(obj["bits"])
         if bits == 6:
@@ -1330,13 +1353,13 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
         "source": "delta_hybrid",
         "quant": {"attn": "int8", "mlp": "int6", "embed": "int8", "other": "int8"},
     },
-    "delta_attn_fp8_mlp_fp6": {
+    "delta_attn_int6_mlp_int6": {
         "source": "delta_hybrid",
-        "quant": {"attn": "fp8_e4m3", "mlp": "fp6_e3m2", "embed": "int8", "other": "int8"},
+        "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
     },
-    "delta_attn_fp6_mlp_fp6": {
+    "delta_attn_int6_mlp_int4": {
         "source": "delta_hybrid",
-        "quant": {"attn": "fp6_e3m2", "mlp": "fp6_e3m2", "embed": "int8", "other": "int8"},
+        "quant": {"attn": "int6", "mlp": "int4", "embed": "int8", "other": "int8"},
     },
 }
 
