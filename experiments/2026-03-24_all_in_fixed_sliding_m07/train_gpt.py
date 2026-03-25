@@ -1363,8 +1363,14 @@ class GPT(nn.Module):
                         "adapters": nn.ModuleList(
                             [
                                 nn.ModuleList(
-                                    [
-                                        LoopPassAdapter(model_dim, num_heads, num_kv_heads, int(mlp_mult * model_dim), lora_rank)
+                                    [] if not self.use_loop_adapters else [
+                                        LoopPassAdapter(
+                                            model_dim,
+                                            num_heads,
+                                            num_kv_heads,
+                                            int(mlp_mult * model_dim),
+                                            lora_rank,
+                                        )
                                         for _ in range(loop_repeats)
                                     ]
                                 )
@@ -2336,7 +2342,17 @@ def main() -> None:
     restore_low_dim_params_to_fp32(base_model)
     init_state_cpu = build_init_state_dict(args)
     compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
-    model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
+    ddp_find_unused = bool(args.control_baseline or args.experimental_all_in)
+    model: nn.Module = (
+        DDP(
+            compiled_model,
+            device_ids=[local_rank],
+            broadcast_buffers=False,
+            find_unused_parameters=ddp_find_unused,
+        )
+        if distributed
+        else compiled_model
+    )
     matrix_params: list[nn.Parameter] = []
     scalar_params: list[nn.Parameter] = []
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
