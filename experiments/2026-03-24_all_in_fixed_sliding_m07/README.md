@@ -119,7 +119,7 @@ Size-probe only schemes:
 Current default shortlist:
 
 ```bash
-COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7
+COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,raw_int6_bitplane
 ```
 
 Each scheme logs:
@@ -160,7 +160,7 @@ EXPERIMENTAL_ALL_IN=0 \
 EMA_ENABLED=1 \
 SWA_ENABLED=1 \
 WEIGHT_NOISE_ENABLED=0 \
-COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7 \
+COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,raw_int6_bitplane \
 torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 

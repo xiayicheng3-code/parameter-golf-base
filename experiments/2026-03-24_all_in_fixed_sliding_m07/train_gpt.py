@@ -115,6 +115,7 @@ class Hyperparameters:
     use_layer_rope = bool(int(os.environ.get("USE_LAYER_ROPE", "0" if control_baseline else "1")))
     use_unet_skips = bool(int(os.environ.get("USE_UNET_SKIPS", "1")))
     use_sliding_attention_train = bool(int(os.environ.get("USE_SLIDING_ATTENTION_TRAIN", "0" if control_baseline else "1")))
+    allow_shifted_in_control = bool(int(os.environ.get("ALLOW_SHIFTED_IN_CONTROL", "0")))
     ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "0")))
     ttt_lr = float(os.environ.get("TTT_LR", 0.002))
     ttt_epochs = int(os.environ.get("TTT_EPOCHS", 3))
@@ -133,7 +134,7 @@ class Hyperparameters:
         part.strip()
         for part in os.environ.get(
             "COMPRESSION_SCHEMES",
-            "raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7",
+            "raw_sota_int6_lzma,raw_int_mixed,raw_int6_bitplane",
         ).split(",")
         if part.strip()
     )
@@ -154,7 +155,7 @@ class Hyperparameters:
         use_loop_adapters = False
         use_layer_rope = False
         use_sliding_attention_train = False
-        shifted_attention_layers = 0
+        shifted_attention_layers = shifted_attention_layers if allow_shifted_in_control else 0
         weight_noise_enabled = False
         ema_enabled = True
         swa_enabled = True
@@ -852,6 +853,17 @@ def shift_expanded_keys(k: Tensor, head_shifts: tuple[int, ...]) -> Tensor:
     return shifted
 
 
+def shift_kv_heads(k: Tensor, kv_shifts: tuple[int, ...]) -> Tensor:
+    shifted = k.clone()
+    for kv_head_idx, shift in enumerate(kv_shifts):
+        if shift <= 0:
+            continue
+        shifted[:, kv_head_idx, :, :] = 0.0
+        if shift < k.size(2):
+            shifted[:, kv_head_idx, shift:, :] = k[:, kv_head_idx, :-shift, :]
+    return shifted
+
+
 def flash_attention_supports(dtype: torch.dtype, device: torch.device) -> bool:
     return flash_attn_3_func is not None and device.type == "cuda" and dtype in {torch.float16, torch.bfloat16}
 
@@ -975,7 +987,11 @@ class SlidingCausalSelfAttention(nn.Module):
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rope_dims = 0
         self.rotary = Rotary(self.head_dim, base=rope_base, train_seq_len=1024)
-        self.fixed_shift_offsets = shift_offsets
+        if len(shift_offsets) < self.num_kv_heads:
+            raise ValueError(
+                f"shift_offsets must provide at least {self.num_kv_heads} offsets, got {len(shift_offsets)}"
+            )
+        self.fixed_shift_offsets = shift_offsets[: self.num_kv_heads]
 
     def _xsa_efficient(self, y: Tensor, v: Tensor) -> Tensor:
         vn = F.normalize(v, dim=-1)
@@ -1037,18 +1053,10 @@ class SlidingCausalSelfAttention(nn.Module):
         q = (q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]).transpose(1, 2)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
+        if shift_enabled:
+            k = shift_kv_heads(k, self.fixed_shift_offsets)
         k_full = expand_kv_heads(k, self.num_heads)
         v_full = expand_kv_heads(v, self.num_heads)
-        if shift_enabled:
-            head_shifts = [0] * self.num_heads
-            kv_group_size = self.num_heads // self.num_kv_heads
-            shiftable_heads: list[int] = []
-            for kv_head_idx in range(self.num_kv_heads):
-                group_start = kv_head_idx * kv_group_size
-                shiftable_heads.extend(range(group_start + 1, group_start + kv_group_size))
-            for head_idx, shift in zip(shiftable_heads, self.fixed_shift_offsets):
-                head_shifts[head_idx] = shift
-            k_full = shift_expanded_keys(k_full, tuple(head_shifts))
         full_causal_fast_path = (
             not shift_enabled
             and self.window_size >= seqlen

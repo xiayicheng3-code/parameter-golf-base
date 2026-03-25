@@ -1,0 +1,160 @@
+Last login: Wed Mar 25 12:56:04 on ttys018
+yichengxia@Yichengs-MacBook-Air-2 ~ % ssh hcttukmvizyc4q-64411feb@ssh.runpod.io -i ~/.ssh/id_ed25519
+
+-- RUNPOD.IO --
+Enjoy your Pod #hcttukmvizyc4q ^_^
+
+ _____                             _ 
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |                
+                  |_|                
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@54dd1b628af3:/workspace/parameter-golf# cd /workspace
+
+if [ ! -d /workspace/parameter-golf-base ]; then
+  git clone https://github.com/xiayicheng3-code/parameter-golf-base.git
+fi
+
+cd /workspace/parameter-golf-base
+git pull --ff-only https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
+
+python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+
+RUN_ID=exp_shiftkv_noloop \
+CONTROL_BASELINE=0 \
+EXPERIMENTAL_ALL_IN=1 \
+DATA_PATH=./data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+NUM_LAYERS=11 \
+NUM_PRELUDE_LAYERS=0 \
+NUM_LOOP_GROUPS=1 \
+NUM_LOOP_LAYERS=11 \
+LOOP_REPEATS=1 \
+NUM_INTER_LOOP_LAYERS=0 \
+liding_m07/train_gpt.py-nproc_per_node=1 ./experiments/2026-03-24_all_in_fixed_s
+Cloning into 'parameter-golf-base'...
+remote: Enumerating objects: 827, done.
+remote: Counting objects: 100% (18/18), done.
+remote: Compressing objects: 100% (13/13), done.
+remote: Total 827 (delta 13), reused 5 (delta 5), pack-reused 809 (from 3)
+Receiving objects: 100% (827/827), 1.33 MiB | 8.90 MiB/s, done.
+Resolving deltas: 100% (411/411), done.
+From https://github.com/xiayicheng3-code/parameter-golf-base
+ * branch            HEAD       -> FETCH_HEAD
+Already up to date.
+manifest.json: 1.93kB [00:00, 5.23MB/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 124M/124M [00:01<00:00, 76.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:01<00:00, 123
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:01<00:00, 110
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 98.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 98.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 82.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 89.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:01<00:00, 110
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 98.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 99.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|█| 200M/200M [00:02<00:00, 98.
+datasets/tokenizers/fineweb_1024_bpe.mod(…): 100%|█| 254k/254k [00:00<00:00, 600
+fineweb_1024_bpe.vocab: 9.86kB [00:00, 9.98MB/s]
+logs/exp_shiftkv_noloop.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=./data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=./data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:44295392
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_4 active_layers:[7, 8, 9, 10]
+looping_layout prelude:0 loop_groups:1 loop_layers:11 loop_repeats:1 inter_loop_layers:0 epilogue:0 effective_depth:11 lora_rank:0
+shifted_attention_layers:[0, 1, 2]
+world_size:1 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=True
+attention_mode:fixed_sliding_shifted num_heads:8 num_kv_heads:4 sliding_window_size:512 sliding_chunk_size:512
+runtime_mode control_baseline:False experimental_all_in:True
+experimental_flags use_m07:True use_loop_adapters:False use_layer_rope:False use_unet_skips:True
+m07:unified_hyper_connection enabled
+mlp_activation:swiglu leaky_relu_slope:0.5
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025
+train_batch_tokens:131072 train_seq_len:1024 iterations:100000 warmup_steps:20 max_wallclock_seconds:180.000
+seed:1337
+init_seed:1337 init_impl:stateless_ortho_v1
+export_mode:delta_hybrid
+ema_enabled:False ema_decay:0.997 weight_noise_enabled:False weight_noise_scale:0.02 weight_noise_start_frac:0.3 late_qat_threshold:0.0
+compression_schemes:delta_attn_int8_mlp_int6
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/100000 train_loss:6.9315 train_time:302ms step_avg:302.26ms
+step:2/100000 train_loss:6.7749 train_time:552ms step_avg:276.19ms
+step:3/100000 train_loss:6.1570 train_time:804ms step_avg:268.10ms
+step:4/100000 train_loss:5.9637 train_time:1056ms step_avg:264.05ms
+step:5/100000 train_loss:5.8270 train_time:1310ms step_avg:262.04ms
+step:6/100000 train_loss:5.6153 train_time:1565ms step_avg:260.76ms
+step:7/100000 train_loss:5.4245 train_time:1820ms step_avg:259.99ms
+step:8/100000 train_loss:5.2269 train_time:2075ms step_avg:259.41ms
+step:9/100000 train_loss:5.1014 train_time:2332ms step_avg:259.08ms
+step:10/100000 train_loss:4.9526 train_time:2588ms step_avg:258.83ms
+step:25/100000 train_loss:4.3365 train_time:6451ms step_avg:258.03ms
+step:50/100000 train_loss:3.9596 train_time:12882ms step_avg:257.64ms
+step:75/100000 train_loss:3.6256 train_time:19318ms step_avg:257.58ms
+step:100/100000 train_loss:3.5748 train_time:25750ms step_avg:257.50ms
+step:125/100000 train_loss:3.1672 train_time:32186ms step_avg:257.49ms
+step:150/100000 train_loss:3.0880 train_time:38620ms step_avg:257.47ms
+step:175/100000 train_loss:3.1173 train_time:45053ms step_avg:257.45ms
+step:200/100000 train_loss:2.9990 train_time:51495ms step_avg:257.47ms
+step:225/100000 train_loss:2.9160 train_time:57927ms step_avg:257.45ms
+step:250/100000 train_loss:2.8798 train_time:64383ms step_avg:257.53ms
+step:275/100000 train_loss:2.9718 train_time:70824ms step_avg:257.54ms
+step:300/100000 train_loss:2.8783 train_time:77281ms step_avg:257.60ms
+step:325/100000 train_loss:2.8006 train_time:83739ms step_avg:257.66ms
+step:350/100000 train_loss:2.7493 train_time:90184ms step_avg:257.67ms
+step:375/100000 train_loss:2.7790 train_time:96621ms step_avg:257.66ms
+step:400/100000 train_loss:2.8114 train_time:103059ms step_avg:257.65ms
+step:425/100000 train_loss:2.7488 train_time:109490ms step_avg:257.62ms
+step:450/100000 train_loss:2.6310 train_time:115921ms step_avg:257.60ms
+step:475/100000 train_loss:2.7219 train_time:122361ms step_avg:257.60ms
+step:500/100000 train_loss:2.7143 train_time:128802ms step_avg:257.60ms
+step:525/100000 train_loss:2.7506 train_time:135225ms step_avg:257.57ms
+step:550/100000 train_loss:2.6553 train_time:141646ms step_avg:257.54ms
+step:575/100000 train_loss:2.5101 train_time:148067ms step_avg:257.51ms
+step:600/100000 train_loss:2.6509 train_time:154571ms step_avg:257.62ms
+step:625/100000 train_loss:2.6245 train_time:161015ms step_avg:257.62ms
+step:650/100000 train_loss:2.5810 train_time:167441ms step_avg:257.60ms
+step:675/100000 train_loss:2.5829 train_time:173861ms step_avg:257.57ms
+step:699/100000 val_loss:2.6005 val_bpb:1.5402 train_time:180039ms step_avg:257.57ms
+stopping_early: wallclock_cap train_time:180039ms step:699/100000
+peak memory allocated: 61467 MiB reserved: 79532 MiB
+ema:disabled using_online_weights
+DIAGNOSTIC final_eval val_loss:2.6005 val_bpb:1.5402 eval_time:36675ms
+Serialized model: 175363105 bytes
+Code size: 133238 bytes
+Serialized model delta_attn_int8_mlp_int6: 8974157 bytes (source:delta_hybrid compressor:zstd_or_zlib payload:44586878 raw_torch:44652949 payload_ratio:3.93x)
+Total submission size delta_attn_int8_mlp_int6: 9107395 bytes
+final_delta_attn_int8_mlp_int6_roundtrip val_loss:3.4289 val_bpb:2.0308 eval_time:36494ms
+final_delta_attn_int8_mlp_int6_roundtrip_exact val_loss:3.42890944 val_bpb:2.03079331
+compression_summary delta_attn_int8_mlp_int6:ok
+root@54dd1b628af3:/workspace/parameter-golf-base# 
