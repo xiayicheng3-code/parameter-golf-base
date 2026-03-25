@@ -983,6 +983,28 @@ class SlidingCausalSelfAttention(nn.Module):
             for head_idx, shift in zip(shiftable_heads, self.fixed_shift_offsets):
                 head_shifts[head_idx] = shift
             k_full = shift_expanded_keys(k_full, tuple(head_shifts))
+        full_causal_fast_path = (
+            not shift_enabled
+            and self.window_size >= seqlen
+            and self.chunk_size >= seqlen
+        )
+        if full_causal_fast_path:
+            y = F.scaled_dot_product_attention(
+                q,
+                k_full,
+                v_full,
+                attn_mask=None,
+                is_causal=True,
+                enable_gqa=False,
+            )
+            if use_xsa_override:
+                y = self._xsa_efficient(y, v_full)
+            y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)
+            proj_in = y
+            if adapter is not None:
+                proj_weight = adapter.attn_proj.effective_weight(self.proj.weight, proj_in.dtype, proj_in.device)
+                return F.linear(proj_in, proj_weight)
+            return self.proj(proj_in)
         chunks: list[Tensor] = []
         for qs in range(0, seqlen, self.chunk_size):
             qe = min(qs + self.chunk_size, seqlen)
