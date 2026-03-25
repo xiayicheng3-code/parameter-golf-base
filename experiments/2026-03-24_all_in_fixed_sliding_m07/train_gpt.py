@@ -33,6 +33,8 @@ except ImportError:
     except ImportError:
         flash_attn_3_func = None
 class Hyperparameters:
+    control_baseline = bool(int(os.environ.get("CONTROL_BASELINE", "1")))
+    experimental_all_in = bool(int(os.environ.get("EXPERIMENTAL_ALL_IN", "0")))
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
     val_files = os.path.join(data_path, "fineweb_val_*.bin")
@@ -41,12 +43,13 @@ class Hyperparameters:
     seed = int(os.environ.get("SEED", 1337))
     val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
     val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 4000))
-    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 500))
+    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 25 if control_baseline else 500))
     iterations = int(os.environ.get("ITERATIONS", 20000))
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
-    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
-    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432 if control_baseline else 262_144))
+    grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
+    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048 if control_baseline else 1024))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
@@ -54,7 +57,7 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     model_dim = int(os.environ.get("MODEL_DIM", 512))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
-    mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
+    mlp_mult = float(os.environ.get("MLP_MULT", 3.0 if control_baseline else 4.0))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
@@ -72,16 +75,16 @@ class Hyperparameters:
     beta2 = float(os.environ.get("BETA2", 0.95))
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
-    sliding_window_size = int(os.environ.get("SLIDING_WINDOW_SIZE", 512))
+    sliding_window_size = int(os.environ.get("SLIDING_WINDOW_SIZE", 2048 if control_baseline else 512))
     sliding_chunk_size = int(os.environ.get("SLIDING_CHUNK_SIZE", 0))
-    shifted_attention_layers = int(os.environ.get("SHIFTED_ATTENTION_LAYERS", 3))
-    num_prelude_layers = int(os.environ.get("NUM_PRELUDE_LAYERS", 2))
+    shifted_attention_layers = int(os.environ.get("SHIFTED_ATTENTION_LAYERS", 0 if control_baseline else 3))
+    num_prelude_layers = int(os.environ.get("NUM_PRELUDE_LAYERS", 0 if control_baseline else 2))
     num_loop_groups = int(os.environ.get("NUM_LOOP_GROUPS", 1))
-    num_loop_layers = int(os.environ.get("NUM_LOOP_LAYERS", 3))
-    loop_repeats = int(os.environ.get("LOOP_REPEATS", 2))
+    num_loop_layers = int(os.environ.get("NUM_LOOP_LAYERS", 11 if control_baseline else 3))
+    loop_repeats = int(os.environ.get("LOOP_REPEATS", 1 if control_baseline else 2))
     num_inter_loop_layers = int(os.environ.get("NUM_INTER_LOOP_LAYERS", 0))
-    num_epilogue_layers = int(os.environ.get("NUM_EPILOGUE_LAYERS", 3))
-    lora_rank = int(os.environ.get("LORA_RANK", 8))
+    num_epilogue_layers = int(os.environ.get("NUM_EPILOGUE_LAYERS", 0 if control_baseline else 3))
+    lora_rank = int(os.environ.get("LORA_RANK", 0 if control_baseline else 8))
     mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
     mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
     muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
@@ -90,21 +93,39 @@ class Hyperparameters:
     muon_wd = float(os.environ.get("MUON_WD", 0.04))
     adam_wd = float(os.environ.get("ADAM_WD", 0.04))
     qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
+    leaky_relu_slope = float(os.environ.get("LEAKY_RELU_SLOPE", 0.5))
+    mlp_activation = os.environ.get("MLP_ACTIVATION", "leakyrelu2" if control_baseline else "swiglu")
     bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
     xsa_last_n = int(os.environ.get("XSA_LAST_N", 4))  # XSA on last 4 layers (0 = disabled)
     rope_dims = int(os.environ.get("ROPE_DIMS", 16))
     ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
     dtg_enabled = bool(int(os.environ.get("DTG_ENABLED", "0")))
-    late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.0))
-    ema_enabled = bool(int(os.environ.get("EMA_ENABLED", "0")))
+    late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15 if control_baseline else 0.0))
+    ema_enabled = bool(int(os.environ.get("EMA_ENABLED", "1" if control_baseline else "0")))
     ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
-    weight_noise_enabled = bool(int(os.environ.get("WEIGHT_NOISE_ENABLED", "1")))
+    weight_noise_enabled = bool(int(os.environ.get("WEIGHT_NOISE_ENABLED", "0" if control_baseline else "1")))
     weight_noise_scale = float(os.environ.get("WEIGHT_NOISE_SCALE", 0.02))
     weight_noise_start_frac = float(os.environ.get("WEIGHT_NOISE_START_FRAC", 0.3))
     ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
     ve_dim = int(os.environ.get("VE_DIM", 128))
     ve_layers = os.environ.get("VE_LAYERS", "9,10")
+    use_m07 = bool(int(os.environ.get("USE_M07", "0" if control_baseline else "1")))
+    use_loop_adapters = bool(int(os.environ.get("USE_LOOP_ADAPTERS", "0" if control_baseline else "1")))
+    use_layer_rope = bool(int(os.environ.get("USE_LAYER_ROPE", "0" if control_baseline else "1")))
+    use_unet_skips = bool(int(os.environ.get("USE_UNET_SKIPS", "1")))
+    use_sliding_attention_train = bool(int(os.environ.get("USE_SLIDING_ATTENTION_TRAIN", "0" if control_baseline else "1")))
+    ttt_enabled = bool(int(os.environ.get("TTT_ENABLED", "0")))
+    ttt_lr = float(os.environ.get("TTT_LR", 0.002))
+    ttt_epochs = int(os.environ.get("TTT_EPOCHS", 3))
+    ttt_chunk_tokens = int(os.environ.get("TTT_CHUNK_TOKENS", 32768))
+    ttt_freeze_blocks = int(os.environ.get("TTT_FREEZE_BLOCKS", 0))
+    ttt_momentum = float(os.environ.get("TTT_MOMENTUM", 0.9))
+    ttt_batch_seqs = int(os.environ.get("TTT_BATCH_SEQS", 32))
+    ttt_grad_clip = float(os.environ.get("TTT_GRAD_CLIP", 1.0))
+    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+    parameter_banking_enabled = bool(int(os.environ.get("PARAMETER_BANKING_ENABLED", "0")))
+    parallel_muon_enabled = bool(int(os.environ.get("PARALLEL_MUON_ENABLED", "0")))
     init_seed = int(os.environ.get("INIT_SEED", os.environ.get("SEED", "1337")))
     init_impl = os.environ.get("INIT_IMPL", "stateless_ortho_v1")
     export_mode = os.environ.get("EXPORT_MODE", "delta_hybrid")
@@ -112,7 +133,7 @@ class Hyperparameters:
         part.strip()
         for part in os.environ.get(
             "COMPRESSION_SCHEMES",
-            "delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_sota_int6_lzma,raw_int_mixed",
+            "raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7",
         ).split(",")
         if part.strip()
     )
@@ -126,6 +147,26 @@ class Hyperparameters:
         for part in os.environ.get("DELTA_FP16_NAME_PATTERNS", "").split(",")
         if part.strip()
     )
+    if control_baseline:
+        # Control mode is authoritative: it keeps the script in a record-like regime
+        # even if stale experimental env vars are still present in the shell.
+        use_m07 = False
+        use_loop_adapters = False
+        use_layer_rope = False
+        use_sliding_attention_train = False
+        shifted_attention_layers = 0
+        weight_noise_enabled = False
+        ema_enabled = True
+        swa_enabled = True
+        mlp_activation = "leakyrelu2"
+        lora_rank = 0
+        if not experimental_all_in:
+            num_prelude_layers = 0
+            num_loop_groups = 1
+            num_loop_layers = num_layers
+            loop_repeats = 1
+            num_inter_loop_layers = 0
+            num_epilogue_layers = 0
 
 
 def _seed_from_parts(base_seed: int, *parts: str) -> int:
@@ -385,6 +426,25 @@ def quantize_float_tensor_nbit(t: Tensor, bits: int) -> tuple[Tensor, Tensor]:
 def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
     if bits not in {4, 5, 6, 7, 9, 10}:
         raise ValueError(f"Unsupported lowbit pack bits={bits}")
+    if bits == 9:
+        qmax = (1 << (bits - 1)) - 1
+        vals = (
+            q.detach().to("cpu", dtype=torch.int16).reshape(-1).numpy().astype(np.int16, copy=False) + qmax
+        ).astype(np.uint16)
+        out = bytearray()
+        bit_buffer = 0
+        bit_count = 0
+        mask = (1 << bits) - 1
+        for v in vals:
+            bit_buffer |= (int(v) & mask) << bit_count
+            bit_count += bits
+            while bit_count >= 8:
+                out.append(bit_buffer & 0xFF)
+                bit_buffer >>= 8
+                bit_count -= 8
+        if bit_count > 0:
+            out.append(bit_buffer & 0xFF)
+        return torch.from_numpy(np.frombuffer(bytes(out), dtype=np.uint8).copy())
     group_size = math.lcm(8, bits) // bits
     packed_bytes = (group_size * bits) // 8
     qmax = (1 << (bits - 1)) - 1
@@ -403,6 +463,25 @@ def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
 def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
     if bits not in {4, 5, 6, 7, 9, 10}:
         raise ValueError(f"Unsupported lowbit unpack bits={bits}")
+    if bits == 9:
+        qmax = (1 << (bits - 1)) - 1
+        raw = packed.detach().to("cpu", dtype=torch.uint8).reshape(-1).numpy().astype(np.uint8, copy=False)
+        vals = np.empty((numel,), dtype=np.int16)
+        bit_buffer = 0
+        bit_count = 0
+        src_idx = 0
+        mask = (1 << bits) - 1
+        for i in range(numel):
+            while bit_count < bits:
+                if src_idx >= raw.size:
+                    raise ValueError(f"Packed tensor ended early during {bits}-bit unpack")
+                bit_buffer |= int(raw[src_idx]) << bit_count
+                bit_count += 8
+                src_idx += 1
+            vals[i] = np.int16((bit_buffer & mask) - qmax)
+            bit_buffer >>= bits
+            bit_count -= bits
+        return torch.from_numpy(vals.copy())
     group_size = math.lcm(8, bits) // bits
     packed_bytes = (group_size * bits) // 8
     qmax = (1 << (bits - 1)) - 1
@@ -628,19 +707,30 @@ class CastedLinear(nn.Linear):
     _qat_enabled: bool = False
     _weight_noise_enabled: bool = False
     _weight_noise_scale: float = 0.0
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.register_buffer("qat_alpha", torch.tensor(0.0, dtype=torch.float32), persistent=False)
     def forward(self, x: Tensor) -> Tensor:
         w = self.weight.to(x.dtype)
         if self.training:
             w = maybe_apply_weight_noise(w)
-        if CastedLinear._qat_enabled and self.training and w.ndim == 2:
+        if self.training and w.ndim == 2:
             with torch.no_grad():
                 w32 = self.weight.float()
                 row_max = w32.abs().amax(dim=1)
                 scale = (row_max / 31.0).clamp_min(1.0 / 31.0)
                 w_q = (torch.clamp(torch.round(w32 / scale[:, None]), -32, 31) * scale[:, None]).to(x.dtype)
-            w = w + (w_q - w).detach()
+            alpha = self.qat_alpha.to(device=x.device, dtype=x.dtype)
+            w = w + alpha * (w_q - w).detach()
         bias = self.bias.to(x.dtype) if self.bias is not None else None
         return F.linear(x, w, bias)
+
+
+def set_qat_strength(module: nn.Module, enabled: bool) -> None:
+    alpha = 1.0 if enabled else 0.0
+    for submodule in module.modules():
+        if isinstance(submodule, CastedLinear):
+            submodule.qat_alpha.fill_(alpha)
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
     with torch.no_grad():
         for name, param in module.named_parameters():
@@ -976,20 +1066,41 @@ class ValueEmbedding(nn.Module):
             h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_mult: float):
+    def __init__(self, dim: int, mlp_mult: float, activation: str = "swiglu", leaky_relu_slope: float = 0.5):
         super().__init__()
         hidden = int(mlp_mult * dim)
         self.hidden = hidden
-        self.fc_gate = CastedLinear(dim, hidden, bias=False)
-        self.fc_value = CastedLinear(dim, hidden, bias=False)
+        self.activation = activation
+        self.leaky_relu_slope = leaky_relu_slope
+        if activation == "swiglu":
+            self.fc_gate = CastedLinear(dim, hidden, bias=False)
+            self.fc_value = CastedLinear(dim, hidden, bias=False)
+            self.fc = None
+        elif activation == "leakyrelu2":
+            self.fc = CastedLinear(dim, hidden, bias=False)
+            self.fc_gate = None
+            self.fc_value = None
+        else:
+            raise ValueError(f"Unsupported MLP activation {activation}")
         self.proj = CastedLinear(hidden, dim, bias=False)
         self.proj._zero_init = True
 
-    def forward(self, x: Tensor, adapter: LoopPassAdapter | None = None) -> Tensor:
+    def forward(self, x: Tensor, adapter: LoopPassAdapter | None = None, use_layer_rope: bool = True) -> Tensor:
+        if self.activation == "leakyrelu2":
+            if self.fc is None:
+                raise RuntimeError("fc is required for leakyrelu2 MLP")
+            hidden = F.leaky_relu(self.fc(x), negative_slope=self.leaky_relu_slope).square()
+            return self.proj(hidden)
+
+        if self.fc_gate is None or self.fc_value is None:
+            raise RuntimeError("fc_gate and fc_value are required for swiglu MLP")
         if adapter is not None:
             gate_weight = adapter.mlp_gate.effective_weight(self.fc_gate.weight, x.dtype, x.device)
-            value_base = adapter.mlp_up_rope.rotate_columns(self.fc_value.weight.to(device=x.device, dtype=x.dtype))
-            value_weight = adapter.mlp_value.effective_weight(value_base, x.dtype, x.device, rope=adapter.mlp_up_rope)
+            value_base = self.fc_value.weight.to(device=x.device, dtype=x.dtype)
+            rope = adapter.mlp_up_rope if use_layer_rope else None
+            if rope is not None:
+                value_base = rope.rotate_columns(value_base)
+            value_weight = adapter.mlp_value.effective_weight(value_base, x.dtype, x.device, rope=rope)
             gate = F.linear(x, gate_weight)
             value = F.linear(x, value_weight)
         else:
@@ -998,10 +1109,8 @@ class MLP(nn.Module):
         hidden = F.silu(gate) * value
         if adapter is not None:
             down_weight = adapter.mlp_down.effective_weight(self.proj.weight, hidden.dtype, hidden.device)
-            out = F.linear(hidden, down_weight)
-        else:
-            out = self.proj(hidden)
-        return out
+            return F.linear(hidden, down_weight)
+        return self.proj(hidden)
 
 
 class Block(nn.Module):
@@ -1016,7 +1125,12 @@ class Block(nn.Module):
         window_size: int,
         chunk_size: int,
         shift_offsets: tuple[int, ...],
+        layer_idx: int = 0,
+        ln_scale: bool = False,
         dtg: bool = False,
+        activation: str = "swiglu",
+        leaky_relu_slope: float = 0.5,
+        control_baseline: bool = False,
     ):
         super().__init__()
         self.attn_norm = RMSNorm()
@@ -1024,42 +1138,59 @@ class Block(nn.Module):
         self.attn = SlidingCausalSelfAttention(
             dim, num_heads, num_kv_heads, rope_base, qk_gain_init, window_size, chunk_size, shift_offsets
         )
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = MLP(dim, mlp_mult, activation=activation, leaky_relu_slope=leaky_relu_slope)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
+        self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
+        self.ln_scale_factor = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
         if dtg:
             self.dtg_gate = nn.Linear(dim, 1, bias=True)
             nn.init.zeros_(self.dtg_gate.weight)
             nn.init.constant_(self.dtg_gate.bias, 2.0)
         else:
             self.dtg_gate = None
+        self.control_baseline = control_baseline
 
     def forward(
         self,
-        x_in: Tensor,
+        x: Tensor,
+        x0: Tensor,
         layer_scale: float,
         v_embed: Tensor | None = None,
         adapter: LoopPassAdapter | None = None,
         shift_enabled: bool = False,
         use_xsa: bool = False,
+        use_layer_rope: bool = True,
     ) -> Tensor:
-        x_base = x_in
+        if self.control_baseline:
+            mix = self.resid_mix.to(dtype=x.dtype)
+            x_base = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+            scaled = self.ln_scale_factor
+        else:
+            x_base = x
+            scaled = layer_scale
         attn_out = self.attn(
-            self.attn_norm(x_base) * layer_scale,
+            self.attn_norm(x_base) * scaled,
             v_embed=v_embed,
             adapter=adapter,
             shift_enabled=shift_enabled,
             use_xsa_override=use_xsa,
         )
         mlp_out = self.mlp(
-            self.mlp_norm(x_base) * layer_scale,
+            self.mlp_norm(x_base if not self.control_baseline else (x_base + self.attn_scale.to(dtype=x_base.dtype)[None, None, :] * attn_out)) * scaled,
             adapter=adapter,
+            use_layer_rope=use_layer_rope,
         )
-        x_out = self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
+        x_out = self.attn_scale.to(dtype=x_base.dtype)[None, None, :] * attn_out
         x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * mlp_out
         if self.dtg_gate is not None:
-            gate = torch.sigmoid(self.dtg_gate(x_in.detach()))
-            x_out = gate * x_out
+            gate = torch.sigmoid(self.dtg_gate(x_base.detach()))
+            if self.control_baseline:
+                x_out = x_base + gate * x_out
+            else:
+                x_out = gate * x_out
+        elif self.control_baseline:
+            x_out = x_base + x_out
         return x_out
 
 
@@ -1068,6 +1199,7 @@ class GPT(nn.Module):
         self,
         vocab_size: int,
         num_layers: int,
+        train_seq_len: int,
         model_dim: int,
         num_heads: int,
         num_kv_heads: int,
@@ -1085,6 +1217,14 @@ class GPT(nn.Module):
         rope_dims: int = 0,
         ln_scale: bool = False,
         dtg: bool = False,
+        control_baseline: bool = False,
+        use_m07: bool = True,
+        use_loop_adapters: bool = True,
+        use_layer_rope: bool = True,
+        use_unet_skips: bool = True,
+        use_sliding_attention_train: bool = True,
+        mlp_activation: str = "swiglu",
+        leaky_relu_slope: float = 0.5,
         sliding_window_size: int = 512,
         sliding_chunk_size: int = 0,
         shifted_attention_layers: int = 3,
@@ -1106,7 +1246,13 @@ class GPT(nn.Module):
         self.init_impl = init_impl
         self._ve_target_dim = num_kv_heads * (model_dim // num_heads)  # kv_dim for value projection
         self.shift_offsets = (1, 2, 3, 4)
-        self.shifted_attention_layers = shifted_attention_layers
+        self.control_baseline = control_baseline
+        self.use_m07 = use_m07 and not control_baseline
+        self.use_loop_adapters = use_loop_adapters and not control_baseline and lora_rank > 0
+        self.use_layer_rope = use_layer_rope and not control_baseline
+        self.use_unet_skips = use_unet_skips
+        self.use_sliding_attention_train = use_sliding_attention_train or not control_baseline
+        self.shifted_attention_layers = 0 if control_baseline else shifted_attention_layers
         self.xsa_last_n = xsa_last_n
         self.ln_scale = ln_scale
         self.num_prelude_layers = num_prelude_layers
@@ -1135,7 +1281,15 @@ class GPT(nn.Module):
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
         self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim) if bigram_vocab_size > 0 else None
         self.smear = SmearGate(model_dim)
-        self.hyper_conn = HyperConnection(self.effective_depth, model_dim)
+        self.hyper_conn = HyperConnection(self.effective_depth, model_dim) if self.use_m07 else None
+        self.num_encoder_layers = self.effective_depth // 2
+        self.num_decoder_layers = self.effective_depth - self.num_encoder_layers
+        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers) if self.use_unet_skips else 0
+        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        block_window_size = sliding_window_size if self.use_sliding_attention_train else train_seq_len
+        block_chunk_size = (
+            sliding_chunk_size if self.use_sliding_attention_train and sliding_chunk_size > 0 else block_window_size
+        )
         self.prelude_blocks = nn.ModuleList(
             [
                 Block(
@@ -1145,12 +1299,17 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
-                    sliding_window_size,
-                    sliding_chunk_size,
+                    block_window_size,
+                    block_chunk_size,
                     self.shift_offsets,
+                    layer_idx=i,
+                    ln_scale=ln_scale,
                     dtg=dtg,
+                    activation=mlp_activation,
+                    leaky_relu_slope=leaky_relu_slope,
+                    control_baseline=control_baseline,
                 )
-                for _ in range(num_prelude_layers)
+                for i in range(num_prelude_layers)
             ]
         )
         self.loop_groups = nn.ModuleList(
@@ -1166,12 +1325,17 @@ class GPT(nn.Module):
                                     mlp_mult,
                                     rope_base,
                                     qk_gain_init,
-                                    sliding_window_size,
-                                    sliding_chunk_size,
+                                    block_window_size,
+                                    block_chunk_size,
                                     self.shift_offsets,
+                                    layer_idx=num_prelude_layers + block_idx,
+                                    ln_scale=ln_scale,
                                     dtg=dtg,
+                                    activation=mlp_activation,
+                                    leaky_relu_slope=leaky_relu_slope,
+                                    control_baseline=control_baseline,
                                 )
-                                for _ in range(num_loop_layers)
+                                for block_idx in range(num_loop_layers)
                             ]
                         ),
                         "adapters": nn.ModuleList(
@@ -1201,12 +1365,17 @@ class GPT(nn.Module):
                             mlp_mult,
                             rope_base,
                             qk_gain_init,
-                            sliding_window_size,
-                            sliding_chunk_size,
+                            block_window_size,
+                            block_chunk_size,
                             self.shift_offsets,
+                            layer_idx=num_prelude_layers + num_loop_layers * max(loop_repeats, 1) + block_idx,
+                            ln_scale=ln_scale,
                             dtg=dtg,
+                            activation=mlp_activation,
+                            leaky_relu_slope=leaky_relu_slope,
+                            control_baseline=control_baseline,
                         )
-                        for _ in range(num_inter_loop_layers)
+                        for block_idx in range(num_inter_loop_layers)
                     ]
                 )
                 for _ in range(max(num_loop_groups - 1, 0))
@@ -1221,14 +1390,20 @@ class GPT(nn.Module):
                     mlp_mult,
                     rope_base,
                     qk_gain_init,
-                    sliding_window_size,
-                    sliding_chunk_size,
+                    block_window_size,
+                    block_chunk_size,
                     self.shift_offsets,
+                    layer_idx=self.effective_depth - num_epilogue_layers + i,
+                    ln_scale=ln_scale,
                     dtg=dtg,
+                    activation=mlp_activation,
+                    leaky_relu_slope=leaky_relu_slope,
+                    control_baseline=control_baseline,
                 )
-                for _ in range(num_epilogue_layers)
+                for i in range(num_epilogue_layers)
             ]
         )
+        self.blocks = nn.ModuleList(self._all_blocks()) if self.control_baseline else nn.ModuleList()
         if rope_dims > 0:
             head_dim = model_dim // num_heads
             for block in self._all_blocks():
@@ -1308,24 +1483,63 @@ class GPT(nn.Module):
         x = F.rms_norm(x, (x.size(-1),))
         x = self.smear(x)
         x0 = x
+        if self.control_baseline:
+            skips: list[Tensor] = []
+            ve_cache: dict = {}
+            for i in range(self.num_encoder_layers):
+                ve = self._get_ve(i, input_ids, ve_cache)
+                shift_enabled = i < min(self.shifted_attention_layers, self.effective_depth)
+                use_xsa = i >= max(0, self.effective_depth - self.xsa_last_n)
+                x = self.blocks[i](
+                    x,
+                    x0,
+                    1.0,
+                    v_embed=ve,
+                    adapter=None,
+                    shift_enabled=shift_enabled,
+                    use_xsa=use_xsa,
+                    use_layer_rope=False,
+                )
+                if self.use_unet_skips:
+                    skips.append(x)
+            for i in range(self.num_decoder_layers):
+                bi = self.num_encoder_layers + i
+                if skips and i < self.num_skip_weights:
+                    x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+                ve = self._get_ve(bi, input_ids, ve_cache)
+                shift_enabled = bi < min(self.shifted_attention_layers, self.effective_depth)
+                use_xsa = bi >= max(0, self.effective_depth - self.xsa_last_n)
+                x = self.blocks[bi](
+                    x,
+                    x0,
+                    1.0,
+                    v_embed=ve,
+                    adapter=None,
+                    shift_enabled=shift_enabled,
+                    use_xsa=use_xsa,
+                    use_layer_rope=False,
+                )
+            return self.final_norm(x)
         ve_cache: dict = {}
         history: list[Tensor] = []
         layer_idx = 0
 
         def run_block(block: Block, adapter: LoopPassAdapter | None = None) -> None:
             nonlocal x, layer_idx
-            x_in = self.hyper_conn(layer_idx, x0, history)
+            x_in = self.hyper_conn(layer_idx, x0, history) if self.hyper_conn is not None else x
             layer_scale = 1.0 / math.sqrt(layer_idx + 1) if self.ln_scale else 1.0
             ve = self._get_ve(layer_idx, input_ids, ve_cache)
             shift_enabled = layer_idx < min(self.shifted_attention_layers, self.effective_depth)
             use_xsa = layer_idx >= max(0, self.effective_depth - self.xsa_last_n)
             x = block(
                 x_in,
+                x0,
                 layer_scale,
                 v_embed=ve,
                 adapter=adapter,
                 shift_enabled=shift_enabled,
                 use_xsa=use_xsa,
+                use_layer_rope=self.use_layer_rope,
             )
             history.append(x)
             layer_idx += 1
@@ -1335,7 +1549,8 @@ class GPT(nn.Module):
         for group_idx, loop_group in enumerate(self.loop_groups):
             for repeat_idx in range(self.loop_repeats):
                 for block_idx, block in enumerate(loop_group["blocks"]):
-                    run_block(block, adapter=loop_group["adapters"][block_idx][repeat_idx])
+                    adapter = loop_group["adapters"][block_idx][repeat_idx] if self.use_loop_adapters else None
+                    run_block(block, adapter=adapter)
             if group_idx < len(self.inter_loop_blocks):
                 for block in self.inter_loop_blocks[group_idx]:
                     run_block(block)
@@ -1449,6 +1664,133 @@ def eval_val_sliding(
     tokens_per_byte = token_count.item() / byte_count.item()
     base_model.train()
     return val_loss, bits_per_token * tokens_per_byte
+
+
+def eval_val_sliding_ttt(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    stride: int,
+    log0,
+    batch_seqs: int = 32,
+) -> tuple[float, float]:
+    seq_len = args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    ttt_chunk = args.ttt_chunk_tokens
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= stride or ws == 0]
+    num_chunks = (total_tokens + ttt_chunk - 1) // ttt_chunk
+    chunk_windows: list[list[int]] = [[] for _ in range(num_chunks)]
+    for ws in window_starts:
+        end = min(ws + seq_len, total_tokens)
+        wlen = end - ws
+        s = 0 if ws == 0 else max(wlen - stride, 0)
+        scored_start = ws + s
+        ci = min(scored_start // ttt_chunk, num_chunks - 1)
+        chunk_windows[ci].append(ws)
+    log0(
+        f"ttt_sliding:start chunks={num_chunks} chunk_tokens={ttt_chunk} total_windows={len(window_starts)} "
+        f"stride={stride} ttt_lr={args.ttt_lr} ttt_epochs={args.ttt_epochs} freeze_blocks={args.ttt_freeze_blocks}"
+    )
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    frozen_block_ids = set(range(min(args.ttt_freeze_blocks, len(base_model.blocks))))
+    ttt_params: list[nn.Parameter] = []
+    for name, p in base_model.named_parameters():
+        freeze = any(f"blocks.{bi}." in name for bi in frozen_block_ids)
+        if freeze:
+            p.requires_grad_(False)
+        else:
+            p.requires_grad_(True)
+            ttt_params.append(p)
+    optimizer = torch.optim.SGD(ttt_params, lr=args.ttt_lr, momentum=args.ttt_momentum)
+    t0 = time.perf_counter()
+    for ci in range(num_chunks):
+        windows = chunk_windows[ci]
+        if not windows:
+            continue
+        chunk_start = ci * ttt_chunk
+        chunk_end = min((ci + 1) * ttt_chunk, total_tokens)
+        my_s = (len(windows) * rank) // world_size
+        my_e = (len(windows) * (rank + 1)) // world_size
+        my_windows = windows[my_s:my_e]
+        base_model.eval()
+        with torch.inference_mode():
+            for bi in range(0, len(my_windows), batch_seqs):
+                batch_ws = my_windows[bi:bi + batch_seqs]
+                bsz = len(batch_ws)
+                x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                wlens: list[int] = []
+                for i, ws in enumerate(batch_ws):
+                    end = min(ws + seq_len, total_tokens)
+                    wlen = end - ws
+                    wlens.append(wlen)
+                    chunk_tok = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
+                    x_batch[i, :wlen] = chunk_tok[:-1]
+                    y_batch[i, :wlen] = chunk_tok[1:]
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    logits = base_model.forward_logits(x_batch)
+                nll = F.cross_entropy(logits.reshape(-1, logits.size(-1)).float(), y_batch.reshape(-1), reduction="none").reshape(bsz, seq_len)
+                for i, ws in enumerate(batch_ws):
+                    wlen = wlens[i]
+                    s = 0 if ws == 0 else max(wlen - stride, 0)
+                    scored_nll = nll[i, s:wlen].to(torch.float64)
+                    loss_sum += scored_nll.sum()
+                    token_count += float(wlen - s)
+                    tgt, prev = y_batch[i, s:wlen], x_batch[i, s:wlen]
+                    tb = base_bytes_lut[tgt].to(torch.float64)
+                    tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                    byte_count += tb.sum()
+        is_last_chunk = ci == num_chunks - 1
+        if not is_last_chunk and args.ttt_epochs > 0:
+            base_model.train()
+            chunk_seqs = (chunk_end - chunk_start) // seq_len
+            if chunk_seqs > 0:
+                cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * ci / max(num_chunks - 1, 1)))
+                for pg in optimizer.param_groups:
+                    pg["lr"] = cos_lr
+                my_seq_s = (chunk_seqs * rank) // world_size
+                my_seq_e = (chunk_seqs * (rank + 1)) // world_size
+                my_chunk_seqs = my_seq_e - my_seq_s
+                for _ep in range(args.ttt_epochs):
+                    for bs in range(0, my_chunk_seqs, args.ttt_batch_seqs):
+                        be = min(bs + args.ttt_batch_seqs, my_chunk_seqs)
+                        actual_bs = my_seq_s + bs
+                        start_tok = chunk_start + actual_bs * seq_len
+                        end_tok = chunk_start + (my_seq_s + be) * seq_len + 1
+                        if end_tok > val_tokens.numel():
+                            continue
+                        local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
+                        x = local[:-1].reshape(-1, seq_len)
+                        y = local[1:].reshape(-1, seq_len)
+                        optimizer.zero_grad(set_to_none=True)
+                        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                            loss = base_model(x, y)
+                        loss.backward()
+                        if world_size > 1:
+                            for p in ttt_params:
+                                if p.grad is not None:
+                                    dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+                        torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
+                        optimizer.step()
+    if dist.is_available() and dist.is_initialized():
+        dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(token_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(byte_count, op=dist.ReduceOp.SUM)
+    val_loss = (loss_sum / token_count).item()
+    val_bpb = val_loss / math.log(2.0) * (token_count.item() / byte_count.item())
+    for p in base_model.parameters():
+        p.requires_grad_(True)
+    base_model.eval()
+    log0(f"ttt_sliding:done val_loss={val_loss:.6f} val_bpb={val_bpb:.6f} elapsed={time.perf_counter() - t0:.1f}s")
+    return val_loss, val_bpb
 def _classify_param(name: str) -> str:
     if "tok_emb" in name or "lm_head" in name:
         return "embed"
@@ -1536,6 +1878,7 @@ def build_gpt(args: Hyperparameters, mtp_num_heads: int | None = None, mtp_loss_
     return GPT(
         vocab_size=args.vocab_size,
         num_layers=args.num_layers,
+        train_seq_len=args.train_seq_len,
         model_dim=args.model_dim,
         num_heads=args.num_heads,
         num_kv_heads=args.num_kv_heads,
@@ -1553,6 +1896,14 @@ def build_gpt(args: Hyperparameters, mtp_num_heads: int | None = None, mtp_loss_
         rope_dims=args.rope_dims,
         ln_scale=args.ln_scale,
         dtg=args.dtg_enabled,
+        control_baseline=args.control_baseline,
+        use_m07=args.use_m07,
+        use_loop_adapters=args.use_loop_adapters,
+        use_layer_rope=args.use_layer_rope,
+        use_unet_skips=args.use_unet_skips,
+        use_sliding_attention_train=args.use_sliding_attention_train,
+        mlp_activation=args.mlp_activation,
+        leaky_relu_slope=args.leaky_relu_slope,
         sliding_window_size=args.sliding_window_size,
         sliding_chunk_size=args.sliding_chunk_size,
         shifted_attention_layers=args.shifted_attention_layers,
@@ -1588,6 +1939,7 @@ def should_delta_encode(name: str) -> bool:
             ".attn.c_q.",
             ".attn.c_k.",
             ".attn.c_v.",
+            ".mlp.fc.",
             ".mlp.fc_gate.",
             ".mlp.fc_value.",
         )
@@ -1879,9 +2231,14 @@ def main() -> None:
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if world_size <= 0:
         raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
-    if 8 % world_size != 0:
-        raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so grad_accum_steps stays integral")
-    grad_accum_steps = 8 // world_size
+    if args.grad_accum_steps > 0:
+        grad_accum_steps = args.grad_accum_steps
+    else:
+        if 8 % world_size != 0:
+            raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so default grad_accum_steps stays integral")
+        grad_accum_steps = 8 // world_size
+    if grad_accum_steps <= 0:
+        raise ValueError(f"GRAD_ACCUM_STEPS must be positive, got {grad_accum_steps}")
     grad_scale = 1.0 / grad_accum_steps
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
@@ -1944,10 +2301,13 @@ def main() -> None:
     log0(f"val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path={args.tokenizer_path}")
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1}")
+    if args.parameter_banking_enabled or args.parallel_muon_enabled:
+        raise NotImplementedError("PARAMETER_BANKING_ENABLED/PARALLEL_MUON_ENABLED are staged but not implemented in this script")
     CastedLinear._qat_enabled = args.qat_enabled
     CastedLinear._weight_noise_enabled = False
     CastedLinear._weight_noise_scale = args.weight_noise_scale
     base_model = build_gpt(args).to(device).bfloat16()
+    set_qat_strength(base_model, args.qat_enabled)
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
             module.float()
@@ -2029,7 +2389,10 @@ def main() -> None:
         f"sliding_window_size:{args.sliding_window_size} "
         f"sliding_chunk_size:{args.sliding_chunk_size if args.sliding_chunk_size > 0 else args.sliding_window_size}"
     )
-    log0("m07:unified_hyper_connection enabled")
+    log0(f"runtime_mode control_baseline:{args.control_baseline} experimental_all_in:{args.experimental_all_in}")
+    log0(f"experimental_flags use_m07:{args.use_m07} use_loop_adapters:{args.use_loop_adapters} use_layer_rope:{args.use_layer_rope} use_unet_skips:{args.use_unet_skips}")
+    log0(f"m07:{'unified_hyper_connection enabled' if base_model.use_m07 else 'disabled'}")
+    log0(f"mlp_activation:{args.mlp_activation} leaky_relu_slope:{args.leaky_relu_slope}")
     log0(
         f"tie_embeddings:{args.tie_embeddings} embed_lr:{token_lr} "
         f"head_lr:{args.head_lr if base_model.lm_head is not None else 0.0} "
@@ -2046,7 +2409,7 @@ def main() -> None:
     log0(
         f"ema_enabled:{args.ema_enabled} ema_decay:{args.ema_decay} "
         f"weight_noise_enabled:{args.weight_noise_enabled} weight_noise_scale:{args.weight_noise_scale} "
-        f"weight_noise_start_frac:{args.weight_noise_start_frac}"
+        f"weight_noise_start_frac:{args.weight_noise_start_frac} late_qat_threshold:{args.late_qat_threshold}"
     )
     log0(f"compression_schemes:{','.join(args.compression_schemes)}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
@@ -2134,6 +2497,7 @@ def main() -> None:
         CastedLinear._weight_noise_enabled = noise_active
         if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
             CastedLinear._qat_enabled = True
+            set_qat_strength(base_model, True)
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
@@ -2315,6 +2679,30 @@ def main() -> None:
             log0(traceback.format_exc().rstrip())
             compression_results.append((scheme_name, "failed"))
     log0("compression_summary " + " ".join(f"{name}:{status}" for name, status in compression_results))
+    if args.ttt_enabled:
+        if not getattr(base_model, "control_baseline", False):
+            log0("legal_ttt skipped reason:control_baseline_required")
+        else:
+            base_model.load_state_dict(full_state_dict, strict=True)
+            torch.cuda.synchronize()
+            t_ttt = time.perf_counter()
+            ttt_loss, ttt_bpb = eval_val_sliding_ttt(
+                args,
+                base_model,
+                rank,
+                world_size,
+                device,
+                val_tokens,
+                base_bytes_lut,
+                has_leading_space_lut,
+                is_boundary_token_lut,
+                stride=args.eval_stride,
+                log0=log0,
+                batch_seqs=args.ttt_batch_seqs,
+            )
+            torch.cuda.synchronize()
+            log0(f"legal_ttt val_loss:{ttt_loss:.4f} val_bpb:{ttt_bpb:.4f} eval_time:{1000.0 * (time.perf_counter() - t_ttt):.0f}ms")
+            log0(f"legal_ttt_exact val_loss:{ttt_loss:.8f} val_bpb:{ttt_bpb:.8f}")
     if distributed:
         dist.destroy_process_group()
 if __name__ == "__main__":

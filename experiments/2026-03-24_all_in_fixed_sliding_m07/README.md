@@ -1,69 +1,164 @@
-# All-In Fixed Sliding M07
+# Unified Record-Aligned Superset
 
-Cheap-screen experiment for the requested all-in stack:
+Single-folder experiment script that now supports two runtime personalities in the same
+[train_gpt.py](./train_gpt.py):
 
-`M02, M03, M05, M07, M09, M13, M15, M16, M18, M19, M20, M23, M25, M27, M28, M29, M30, M31`
+- `CONTROL_BASELINE=1` (default): record-style conservative control run
+- `EXPERIMENTAL_ALL_IN=1`: re-enable the more aggressive backbone ideas when needed
 
-## What changed
+The file intentionally keeps both paths, but control mode has explicit precedence so stale
+experimental env vars do not silently reactivate the risky path.
 
-- Forks `2026-03-23_delta_init_export_hybrid` as the export / quantization base.
-- Replaces full-attention eval tricks with native sliding-window attention in the actual model path.
-- Keeps shifted attention as a fixed shallow-layer behavior on top of sliding-window attention.
-- Replaces `resid_mix + skip_weights` with a unified `M07` hyper-connection module that sums the root state and all prior layer outputs before each pre-norm block.
-- Swaps the FFN to SwiGLU while keeping the width decision compression-friendly.
-- Adds the looping-layer trunk with per-pass LoRA adapters and MLP-side LayerRoPE.
-- Uses step-wise loop-path operator fusion: each virtual pass materializes effective attention / MLP weights from base weights, LayerRoPE, and LoRA before the main matrix multiply.
-- Removes residual carry-through inside the block: each layer stores only its newly produced output rather than adding the input back in.
-- Keeps delta-hybrid export, higher-bit mixed compression, fp16-sensitive tensor protection, VE, BigramHash, SmearGate, Partial RoPE, q_gain, training-time weight noise, and deep-layer XSA.
-- Supports multiple loop groups in the middle trunk, with optional non-loop bridge layers between groups.
+## Default Control Profile
 
-## Fixed design choices
+With no extra env vars, the script behaves like a record-aligned baseline:
 
-- Native sliding-window attention is the default and intended path for both train and validation.
-- Shifted attention offsets are fixed in code: `1,2,3,4`.
-- No `ATTENTION_IMPL` env knob.
-- No `SHIFTED_ATTENTION_OFFSETS` env knob.
-- No env knob for the unified `M07`.
+- `CONTROL_BASELINE=1`
+- `EXPERIMENTAL_ALL_IN=0`
+- standard residual/U-Net style path, not full-history `M07`
+- loop adapters off
+- loop `LayerRoPE` off
+- training-time weight noise off
+- `EMA_ENABLED=1`
+- `SWA_ENABLED=1`
+- compile-safe late QAT enabled via `LATE_QAT_THRESHOLD=0.15`
+- `MLP_ACTIVATION=leakyrelu2` with `LEAKY_RELU_SLOPE=0.5`
+- `MLP_MULT=3.0`
+- `BigramHash` on
+- `SmearGate` on
+- `XSA_LAST_N=4`
+- `ROPE_DIMS=16`
+- `LN_SCALE=1`
+- `VE_ENABLED=1`, `VE_DIM=128`
+- `MUON_WD=0.04`, `ADAM_WD=0.04`
+- `WARMDOWN_ITERS=3500`
+- `GRAD_ACCUM_STEPS=0` uses the old automatic rule, but you can now set `GRAD_ACCUM_STEPS=1` for a true single-step large batch run
 
-## Useful knobs
+The default depth layout is also normalized into a plain 11-layer stack:
+
+- `NUM_PRELUDE_LAYERS=0`
+- `NUM_LOOP_GROUPS=1`
+- `NUM_LOOP_LAYERS=NUM_LAYERS`
+- `LOOP_REPEATS=1`
+- `NUM_INTER_LOOP_LAYERS=0`
+- `NUM_EPILOGUE_LAYERS=0`
+
+This keeps the single file but makes the default run much closer to the record recipe.
+
+## Experimental Path
+
+The all-in machinery is still present for later reactivation:
+
+- unified `M07` full-history hyper-connection
+- loop groups
+- per-pass loop LoRA adapters
+- loop-path `LayerRoPE`
+- native sliding/shifted attention as the main train path
+- training-time weight noise
+
+Recommended way to re-enable it:
 
 ```bash
-SLIDING_WINDOW_SIZE=512
-SLIDING_CHUNK_SIZE=0
-SHIFTED_ATTENTION_LAYERS=3
-NUM_PRELUDE_LAYERS=2
-NUM_LOOP_GROUPS=1
-NUM_LOOP_LAYERS=3
-LOOP_REPEATS=2
-NUM_INTER_LOOP_LAYERS=0
-NUM_EPILOGUE_LAYERS=3
-LORA_RANK=8
-MLP_MULT=4.0
-COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7,delta_attn_int8_mlp_int6,raw_sota_int6_lzma,raw_int_mixed,delta_attn_int9_mlp_int8_sizeonly,delta_attn_int8_mlp_int7_sizeonly,delta_attn_int9_mlp_int7_sizeonly,delta_attn_int10_mlp_int7_sizeonly
-EMA_ENABLED=0
+CONTROL_BASELINE=0
+EXPERIMENTAL_ALL_IN=1
+USE_M07=1
+USE_LOOP_ADAPTERS=1
+USE_LAYER_ROPE=1
+USE_SLIDING_ATTENTION_TRAIN=1
 WEIGHT_NOISE_ENABLED=1
-WEIGHT_NOISE_SCALE=0.02
-WEIGHT_NOISE_START_FRAC=0.3
 ```
 
-The default depth layout is `2 + 3 x 2 + 3 = 11` effective layers, matching the default `NUM_LAYERS=11`.
+## Feature Precedence
 
-## Intended readout
+Control mode wins over experimental toggles. When `CONTROL_BASELINE=1`, the script forcibly
+disables:
 
-This branch is for viability screening, not score claims. The first question is:
+- `USE_M07`
+- `USE_LOOP_ADAPTERS`
+- `USE_LAYER_ROPE`
+- `USE_SLIDING_ATTENTION_TRAIN`
+- shifted-attention train layers
+- training-time weight noise
 
-Can this exact all-in stack train stably, preserve enough throughput, and still produce a plausible under-budget artifact after delta-hybrid export?
+It also forces:
 
-Primary failure modes to watch:
+- `EMA_ENABLED=1`
+- `SWA_ENABLED=1`
+- `MLP_ACTIVATION=leakyrelu2`
+- `LORA_RANK=0`
 
-- throughput collapse from looping + sliding attention
-- instability from dense M07 routing
-- quantization/export regression from combining delta-hybrid with the new FFN and loop trunk
+This is deliberate. The goal is to keep one superset script without letting env drift create
+ambiguous hybrids.
 
-## Compression notes
+## Quantization / Export
 
-- `raw_sota_int6_lzma` is the non-delta baseline aligned with the current record holder's storage style:
-  per-row searched int6 for attention/MLP, int8 elsewhere, and `lzma` as the final blob compressor.
-- The old `raw_gptq` label was removed because it was not a true GPTQ implementation.
-- `int7` and `int9` are now stored with native packed bitstreams, not by leaving values in `int8/int16` shells.
-- Schemes ending in `_sizeonly` still quantize and write the compressed artifact, but they skip roundtrip validation so you can cheaply compare packing size.
+Main full-eval schemes kept in the same file:
+
+- `raw_sota_int6_lzma`
+- `raw_int_mixed`
+- `delta_attn_int8_mlp_int6`
+- `delta_attn_int10_mlp_int8`
+- `delta_attn_int9_mlp_int7`
+
+Size-probe only schemes:
+
+- `delta_attn_int9_mlp_int8_sizeonly`
+- `delta_attn_int8_mlp_int7_sizeonly`
+- `delta_attn_int9_mlp_int7_sizeonly`
+- `delta_attn_int10_mlp_int7_sizeonly`
+
+Current default shortlist:
+
+```bash
+COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7
+```
+
+Each scheme logs:
+
+- source kind
+- compressor
+- payload bytes
+- total submission bytes
+- whether it ran full roundtrip eval or size-only
+
+## TTT / Staged Features
+
+Legal score-first TTT now lives in the same file and is optional:
+
+```bash
+TTT_ENABLED=1
+TTT_LR=0.002
+TTT_EPOCHS=3
+EVAL_STRIDE=64
+```
+
+It is intended for control-baseline final evals, not for normal training diagnosis.
+
+The following record-adjacent systems hooks are staged but intentionally not active yet:
+
+- `PARAMETER_BANKING_ENABLED=1`
+- `PARALLEL_MUON_ENABLED=1`
+
+If either is set today, the script raises `NotImplementedError` rather than pretending to
+support them.
+
+## Suggested Control Run
+
+```bash
+RUN_ID=record_control \
+CONTROL_BASELINE=1 \
+EXPERIMENTAL_ALL_IN=0 \
+EMA_ENABLED=1 \
+SWA_ENABLED=1 \
+WEIGHT_NOISE_ENABLED=0 \
+COMPRESSION_SCHEMES=raw_sota_int6_lzma,raw_int_mixed,delta_attn_int8_mlp_int6,delta_attn_int10_mlp_int8,delta_attn_int9_mlp_int7 \
+torchrun --standalone --nproc_per_node=1 train_gpt.py
+```
+
+## Notes
+
+- `step 0` validation is disabled permanently.
+- Late QAT is implemented with per-module tensor gates rather than a pure class-level flag so it
+  remains active under `torch.compile`.
+- `INT7`, `INT9`, and `INT10` keep native packed export support in this same file.
+- `INT9` uses streaming bit packing to avoid the old 72-bit overflow bug from the `uint64` path.
