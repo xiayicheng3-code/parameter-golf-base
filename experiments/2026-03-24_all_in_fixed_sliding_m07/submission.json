@@ -1,0 +1,10 @@
+{
+  "author": "yichengxia",
+  "github_id": "yichengxia",
+  "name": "Experiment: All-In Fixed Sliding M07",
+  "blurb": "Cheap-screen branch that combines fixed native sliding-window attention, shallow shifted attention, unified M07 hyper-connections, looping LayerRoPE adapters, delta-hybrid export, mixed quantization, SwiGLU, VE, XSA, SmearGate, BigramHash, Partial RoPE, q_gain, and EMA.",
+  "date": "2026-03-24T00:00:00Z",
+  "val_loss": null,
+  "val_bpb": null,
+  "bytes_total": null
+}
