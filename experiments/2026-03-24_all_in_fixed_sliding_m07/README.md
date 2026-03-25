@@ -39,7 +39,7 @@ NUM_INTER_LOOP_LAYERS=0
 NUM_EPILOGUE_LAYERS=3
 LORA_RANK=8
 MLP_MULT=4.0
-COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_gptq,raw_int_mixed
+COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,raw_sota_int6_lzma,raw_int_mixed,delta_attn_int9_mlp_int8_sizeonly,delta_attn_int8_mlp_int7_sizeonly,delta_attn_int9_mlp_int7_sizeonly,delta_attn_int10_mlp_int7_sizeonly
 EMA_ENABLED=0
 WEIGHT_NOISE_ENABLED=1
 WEIGHT_NOISE_SCALE=0.02
@@ -59,3 +59,11 @@ Primary failure modes to watch:
 - throughput collapse from looping + sliding attention
 - instability from dense M07 routing
 - quantization/export regression from combining delta-hybrid with the new FFN and loop trunk
+
+## Compression notes
+
+- `raw_sota_int6_lzma` is the non-delta baseline aligned with the current record holder's storage style:
+  per-row searched int6 for attention/MLP, int8 elsewhere, and `lzma` as the final blob compressor.
+- The old `raw_gptq` label was removed because it was not a true GPTQ implementation.
+- `int7` and `int9` are now stored with native packed bitstreams, not by leaving values in `int8/int16` shells.
+- Schemes ending in `_sizeonly` still quantize and write the compressed artifact, but they skip roundtrip validation so you can cheaply compare packing size.

@@ -1,0 +1,178 @@
+ _____                             _
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |
+                  |_|
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@6e4d1c91961f:/workspace/parameter-golf# RUN_ID=int8_noise001_main DATA_PATH=./data/datasets/fineweb10B_sp1024 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model VOCAB_SIZE=1024 NUM_LAYERS=17 NUM_PRELUDE_LAYERS=4 NUM_LOOP_GROUPS=2 NUM_LOOP_LAYERS=3 LOOP_REPEATS=2 NUM_INTER_LOOP_LAYERS=1 NUM_EPILOGUE_LAYERS=4 LORA_RANK=8 TRAIN_SEQ_LEN=1024 TRAIN_BATCH_TOKENS=262144 VAL_BATCH_SIZE=262144 SLIDING_WINDOW_SIZE=512 SLIDING_CHUNK_SIZE=512 SHIFTED_ATTENTION_LAYERS=4 ITERATIONS=100000 VAL_LOSS_EVERY=1000 TRAIN_LOG_EVERY=25 WARMUP_STEPS=20 MAX_WALLCLOCK_SECONDS=600 EMA_ENABLED=0 WEIGHT_NOISE_ENABLED=1 WEIGHT_NOISE_SCALE=0.01 WEIGHT_NOISE_START_FRAC=0.3 COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,raw_gptq,raw_int_mixed CUDA_VISIBLE_DEVICES=0 torchrun --standalone --nproc_per_node=1 ./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py
+/usr/local/bin/python: can't open file '/workspace/parameter-golf/./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py': [Errno 2] No such file or directory
+E0325 02:52:42.756000 13762 torch/distributed/elastic/multiprocessing/api.py:882] failed (exitcode: 2) local_rank: 0 (pid: 13837)of binary: /usr/local/bin/python
+Traceback (most recent call last):
+  File "/usr/local/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 293, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-03-25_02:52:42
+  host      : 6e4d1c91961f
+  rank      : 0 (local_rank: 0)
+  exitcode  : 2 (pid: 13837)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+root@6e4d1c91961f:/workspace/parameter-golf# RUN_ID=int8_noise001_main DATA_PATH=./data/datasets/fineweb10B_sp1024 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model VOCAB_SIZE=1024 NUM_LAYERS=17 NUM_PRELUDE_LAYERS=4 NUM_LOOP_GROUPS=2 NUM_LOOP_LAYERS=3 LOOP_REPEATS=2 NUM_INTER_LOOP_LAYERS=1 NUM_EPILOGUE_LAYERS=4 LORA_RANK=8 TRAIN_SEQ_LEN=1024 TRAIN_BATCH_TOKENS=262144 VAL_BATCH_SIZE=262144 SLIDING_WINDOW_SIZE=512 SLIDING_CHUNK_SIZE=512 SHIFTED_ATTENTION_LAYERS=4 ITERATIONS=100000 VAL_LOSS_EVERY=1000 TRAIN_LOG_EVERY=25 WARMUP_STEPS=20 MAX_WALLCLOCK_SECONDS=600 EMA_ENABLED=0 WEIGHT_NOISE_ENABLED=1 WEIGHT_NOISE_SCALE=0.01 WEIGHT_NOISE_START_FRAC=0.3 COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,raw_gptq,raw_int_mixed CUDA_VISIBLE_DEVICES=0 torchrun --standalone --nproc_per_node=1 ./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py
+/usr/local/bin/python: can't open file '/workspace/parameter-golf/./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py': [Errno 2] No such file or directory
+E0325 02:53:25.763000 13908 torch/distributed/elastic/multiprocessing/api.py:882] failed (exitcode: 2) local_rank: 0 (pid: 13976)of binary: /usr/local/bin/python
+Traceback (most recent call last):
+  File "/usr/local/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 293, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-03-25_02:53:25
+  host      : 6e4d1c91961f
+  rank      : 0 (local_rank: 0)
+  exitcode  : 2 (pid: 13976)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+root@6e4d1c91961f:/workspace/parameter-golf# cd /workspace/parameter-golf-base
+root@6e4d1c91961f:/workspace/parameter-golf-base# pwd
+/workspace/parameter-golf-base
+root@6e4d1c91961f:/workspace/parameter-golf-base#
+root@6e4d1c91961f:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base
+root@6e4d1c91961f:/workspace/parameter-golf-base#
+root@6e4d1c91961f:/workspace/parameter-golf-base# RUN_ID=int8_noise001_main DATA_PATH=./data/datasets/fineweb10B_sp1024 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model VOCAB_SIZE=1024 NUM_LAYERS=21 NUM_PRELUDE_LAYERS=4 NUM_LOOP_GROUPS=2 NUM_LOOP_LAYERS=3 LOOP_REPEATS=2 NUM_INTER_LOOP_LAYERS=1 NUM_EPILOGUE_LAYERS=4 LORA_RANK=8 TRAIN_SEQ_LEN=1024 TRAIN_BATCH_TOKENS=262144 VAL_BATCH_SIZE=262144 SLIDING_WINDOW_SIZE=512 SLIDING_CHUNK_SIZE=512 SHIFTED_ATTENTION_LAYERS=4 ITERATIONS=100000 VAL_LOSS_EVERY=1000 TRAIN_LOG_EVERY=25 WARMUP_STEPS=20 MAX_WALLCLOCK_SECONDS=600 EMA_ENABLED=0 WEIGHT_NOISE_ENABLED=1 WEIGHT_NOISE_SCALE=0.01 WEIGHT_NOISE_START_FRAC=0.3 COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,raw_gptq,raw_int_mixed CUDA_VISIBLE_DEVICES=0 torchrun --standalone --nproc_per_node=1 ./experiments/2026-03-24_all_in_fixed_sliding_m07/train_gpt.py
+
+logs/int8_noise001_main.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=./data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=./data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:61099082
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_4 active_layers:[17, 18, 19, 20]
+looping_layout prelude:4 loop_groups:2 loop_layers:3 loop_repeats:2 inter_loop_layers:1 epilogue:4 effective_depth:21 lora_rank:8
+shifted_attention_layers:[0, 1, 2, 3]
+world_size:1 grad_accum_steps:8
+sdp_backends:cudnn=False flash=True mem_efficient=False math=True
+attention_mode:fixed_sliding_shifted num_heads:8 num_kv_heads:4 sliding_window_size:512 sliding_chunk_size:512
+m07:unified_hyper_connection enabled
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025
+train_batch_tokens:262144 train_seq_len:1024 iterations:100000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+init_seed:1337 init_impl:stateless_ortho_v1
+export_mode:delta_hybrid
+ema_enabled:False ema_decay:0.997 weight_noise_enabled:True weight_noise_scale:0.01 weight_noise_start_frac:0.3
+compression_schemes:delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,raw_gptq,raw_int_mixed
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:0/100000 val_loss:6.9315 val_bpb:4.1052 train_time:0ms step_avg:0.02ms
+step:1/100000 train_loss:6.9315 train_time:1560ms step_avg:1560.12ms
+step:2/100000 train_loss:6.7728 train_time:3062ms step_avg:1530.91ms
+step:3/100000 train_loss:6.2676 train_time:4572ms step_avg:1524.02ms
+step:4/100000 train_loss:6.0162 train_time:6081ms step_avg:1520.36ms
+step:5/100000 train_loss:5.8733 train_time:7590ms step_avg:1517.95ms
+step:6/100000 train_loss:5.7605 train_time:9098ms step_avg:1516.30ms
+step:7/100000 train_loss:5.6666 train_time:10605ms step_avg:1515.07ms
+step:8/100000 train_loss:5.4795 train_time:12114ms step_avg:1514.24ms
+step:9/100000 train_loss:5.3410 train_time:13623ms step_avg:1513.69ms
+step:10/100000 train_loss:5.2276 train_time:15131ms step_avg:1513.11ms
+step:25/100000 train_loss:4.4248 train_time:37761ms step_avg:1510.42ms
+swa:start step:50
+step:50/100000 train_loss:4.0611 train_time:75484ms step_avg:1509.69ms
+step:75/100000 train_loss:3.6974 train_time:114113ms step_avg:1521.51ms
+step:100/100000 train_loss:3.5426 train_time:151805ms step_avg:1518.05ms
+step:125/100000 train_loss:3.3288 train_time:189744ms step_avg:1517.95ms
+step:150/100000 train_loss:3.3113 train_time:227440ms step_avg:1516.26ms
+step:175/100000 train_loss:3.0610 train_time:265363ms step_avg:1516.36ms
+step:200/100000 train_loss:3.1085 train_time:303074ms step_avg:1515.37ms
+step:225/100000 train_loss:2.9833 train_time:341032ms step_avg:1515.70ms
+step:250/100000 train_loss:3.0187 train_time:378736ms step_avg:1514.94ms
+step:275/100000 train_loss:2.9605 train_time:416636ms step_avg:1515.04ms
+step:300/100000 train_loss:2.9802 train_time:454432ms step_avg:1514.77ms
+step:325/100000 train_loss:2.8958 train_time:492719ms step_avg:1516.06ms
+step:350/100000 train_loss:2.8180 train_time:530451ms step_avg:1515.57ms
+step:375/100000 train_loss:2.9199 train_time:568678ms step_avg:1516.48ms
+step:396/100000 val_loss:2.9054 val_bpb:1.7207 train_time:600410ms step_avg:1516.19ms
+stopping_early: wallclock_cap train_time:600410ms step:396/100000
+peak memory allocated: 48860 MiB reserved: 50898 MiB
+ema:disabled using_online_weights
+DIAGNOSTIC final_eval val_loss:2.9054 val_bpb:1.7207 eval_time:134742ms
+Serialized model: 240511745 bytes
+Code size: 101699 bytes
+Serialized model delta_attn_int10_mlp_int8: 22904884 bytes (source:delta_hybrid payload:74326310 raw_torch:74471293 payload_ratio:3.23x)
+Total submission size delta_attn_int10_mlp_int8: 23006583 bytes
+final_delta_attn_int10_mlp_int8_roundtrip val_loss:2.9722 val_bpb:1.7603 eval_time:134782ms
+final_delta_attn_int10_mlp_int8_roundtrip_exact val_loss:2.97222700 val_bpb:1.76032025
+Serialized model delta_attn_int8_mlp_int6: 7557334 bytes (source:delta_hybrid payload:62529830 raw_torch:62674813 payload_ratio:3.84x)
+Total submission size delta_attn_int8_mlp_int6: 7659033 bytes
+final_delta_attn_int8_mlp_int6_roundtrip val_loss:4.6803 val_bpb:2.7719 eval_time:134688ms
+final_delta_attn_int8_mlp_int6_roundtrip_exact val_loss:4.68031816 val_bpb:2.77194804
+Serialized model raw_gptq: 13985411 bytes (source:raw payload:62529830 raw_torch:62674685 payload_ratio:3.84x)
+Total submission size raw_gptq: 14087110 bytes
+final_raw_gptq_roundtrip val_loss:7.1234 val_bpb:4.2189 eval_time:134667ms
+final_raw_gptq_roundtrip_exact val_loss:7.12341109 val_bpb:4.21888529
+Serialized model raw_int_mixed: 13985208 bytes (source:raw payload:62529830 raw_torch:62674685 payload_ratio:3.84x)
+Total submission size raw_int_mixed: 14086907 bytes

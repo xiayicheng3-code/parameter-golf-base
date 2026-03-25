@@ -2,6 +2,7 @@ from __future__ import annotations
 import copy
 import glob
 import io
+import lzma
 import math
 import os
 import random
@@ -111,7 +112,7 @@ class Hyperparameters:
         part.strip()
         for part in os.environ.get(
             "COMPRESSION_SCHEMES",
-            "delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_gptq,raw_int_mixed",
+            "delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_sota_int6_lzma,raw_int_mixed",
         ).split(",")
         if part.strip()
     )
@@ -382,7 +383,7 @@ def quantize_float_tensor_nbit(t: Tensor, bits: int) -> tuple[Tensor, Tensor]:
 
 
 def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
-    if bits not in {4, 5, 6}:
+    if bits not in {4, 5, 6, 7, 9, 10}:
         raise ValueError(f"Unsupported lowbit pack bits={bits}")
     group_size = math.lcm(8, bits) // bits
     packed_bytes = (group_size * bits) // 8
@@ -400,7 +401,7 @@ def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
 
 
 def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
-    if bits not in {4, 5, 6}:
+    if bits not in {4, 5, 6, 7, 9, 10}:
         raise ValueError(f"Unsupported lowbit unpack bits={bits}")
     group_size = math.lcm(8, bits) // bits
     packed_bytes = (group_size * bits) // 8
@@ -415,7 +416,8 @@ def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
     mask = (1 << bits) - 1
     vals = ((merged[:, None] >> shifts[None, :]) & mask).reshape(-1)[:numel].astype(np.int16)
     vals -= qmax
-    return torch.from_numpy(vals.astype(np.int8, copy=False).copy())
+    out_dtype = np.int16 if bits > 8 else np.int8
+    return torch.from_numpy(vals.astype(out_dtype, copy=False).copy())
 
 
 def pack_unsigned_lowbit_tensor(codes: Tensor, bits: int) -> Tensor:
@@ -1624,12 +1626,42 @@ def quantize_tensor_by_kind(t: Tensor, kind: str) -> tuple[dict[str, object], in
     if kind == "int8":
         q, s = quantize_float_tensor(t)
         return {"kind": "int", "bits": 8, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int9":
+        q, s = quantize_float_tensor_nbit(t, 9)
+        packed = pack_lowbit_tensor(q, 9)
+        return {
+            "kind": "int_packed",
+            "bits": 9,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "int10":
         q, s = quantize_float_tensor_nbit(t, 10)
-        return {"kind": "int", "bits": 10, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+        packed = pack_lowbit_tensor(q, 10)
+        return {
+            "kind": "int_packed",
+            "bits": 10,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "int6":
         q, s = quantize_float_tensor_nbit(t, 6)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int7":
+        q, s = quantize_float_tensor_nbit(t, 7)
+        packed = pack_lowbit_tensor(q, 7)
+        return {
+            "kind": "int_packed",
+            "bits": 7,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "int4":
         q, s = quantize_float_tensor_nbit(t, 4)
         packed = pack_lowbit_tensor(q, 4)
@@ -1698,24 +1730,74 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
     "delta_attn_int10_mlp_int8": {
         "source": "delta_hybrid",
         "quant": {"attn": "int10", "mlp": "int8", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
     },
-    "raw_gptq": {
+    "delta_attn_int9_mlp_int8_sizeonly": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int9", "mlp": "int8", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": False,
+    },
+    "delta_attn_int8_mlp_int7_sizeonly": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int8", "mlp": "int7", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": False,
+    },
+    "delta_attn_int9_mlp_int7_sizeonly": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int9", "mlp": "int7", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": False,
+    },
+    "delta_attn_int10_mlp_int7_sizeonly": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int10", "mlp": "int7", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": False,
+    },
+    "raw_sota_int6_lzma": {
         "source": "raw",
         "quant": {"attn": "gptq_int6", "mlp": "gptq_int6", "embed": "int8", "other": "int8"},
+        "compressor": "lzma",
+        "evaluate_after_export": True,
     },
     "raw_int_mixed": {
         "source": "raw",
         "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
     },
     "delta_attn_int8_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int8", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
     },
     "delta_attn_int6_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
     },
 }
+
+
+def compress_artifact_bytes(raw: bytes, compressor: str) -> bytes:
+    if compressor == "lzma":
+        return lzma.compress(raw, preset=6)
+    if compressor == "zstd_or_zlib":
+        return zstandard.ZstdCompressor(level=22).compress(raw) if _COMPRESSOR == "zstd" else zlib.compress(raw, 9)
+    raise ValueError(f"Unknown compressor {compressor}")
+
+
+def decompress_artifact_bytes(blob: bytes, compressor: str) -> bytes:
+    if compressor == "lzma":
+        return lzma.decompress(blob)
+    if compressor == "zstd_or_zlib":
+        return zstandard.ZstdDecompressor().decompress(blob) if _COMPRESSOR == "zstd" else zlib.decompress(blob)
+    raise ValueError(f"Unknown compressor {compressor}")
 
 
 def quantize_state_dict_scheme(
@@ -2144,6 +2226,8 @@ def main() -> None:
             if scheme_def is None:
                 raise ValueError(f"Unknown compression scheme {scheme_name}")
             source_kind = str(scheme_def["source"])
+            compressor = str(scheme_def.get("compressor", "zstd_or_zlib"))
+            evaluate_after_export = bool(scheme_def.get("evaluate_after_export", True))
             if source_kind == "delta_hybrid":
                 payload_state = delta_payload_cpu
                 payload_modes = delta_modes
@@ -2166,7 +2250,7 @@ def main() -> None:
             quant_buf = io.BytesIO()
             torch.save(quant_obj, quant_buf)
             quant_raw = quant_buf.getvalue()
-            quant_blob = zstandard.ZstdCompressor(level=22).compress(quant_raw) if _COMPRESSOR == "zstd" else zlib.compress(quant_raw, 9)
+            quant_blob = compress_artifact_bytes(quant_raw, compressor)
             artifact_name = f"final_model.{scheme_name}.ptz"
             if master_process:
                 with open(artifact_name, "wb") as f:
@@ -2176,14 +2260,20 @@ def main() -> None:
                 ratio = quant_stats["baseline_tensor_bytes"] / max(quant_stats["payload_bytes"], 1)
                 log0(
                     f"Serialized model {scheme_name}: {quant_file_bytes} bytes "
-                    f"(source:{source_kind} payload:{quant_stats['payload_bytes']} raw_torch:{len(quant_raw)} payload_ratio:{ratio:.2f}x)"
+                    f"(source:{source_kind} compressor:{compressor} payload:{quant_stats['payload_bytes']} "
+                    f"raw_torch:{len(quant_raw)} payload_ratio:{ratio:.2f}x)"
                 )
                 log0(f"Total submission size {scheme_name}: {quant_file_bytes + code_bytes} bytes")
             if distributed:
                 dist.barrier()
 
+            if not evaluate_after_export:
+                log0(f"size_only_scheme:{scheme_name} skipping_roundtrip_eval")
+                compression_results.append((scheme_name, "ok_size_only"))
+                continue
+
             quant_state = torch.load(
-                io.BytesIO(zstandard.ZstdDecompressor().decompress(quant_blob) if _COMPRESSOR == "zstd" else zlib.decompress(quant_blob)),
+                io.BytesIO(decompress_artifact_bytes(quant_blob, compressor)),
                 map_location="cpu",
             )
             deq_payload = dequantize_state_dict_scheme(quant_state, payload_state)
