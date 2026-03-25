@@ -75,8 +75,10 @@ class Hyperparameters:
     sliding_chunk_size = int(os.environ.get("SLIDING_CHUNK_SIZE", 0))
     shifted_attention_layers = int(os.environ.get("SHIFTED_ATTENTION_LAYERS", 3))
     num_prelude_layers = int(os.environ.get("NUM_PRELUDE_LAYERS", 2))
+    num_loop_groups = int(os.environ.get("NUM_LOOP_GROUPS", 1))
     num_loop_layers = int(os.environ.get("NUM_LOOP_LAYERS", 3))
     loop_repeats = int(os.environ.get("LOOP_REPEATS", 2))
+    num_inter_loop_layers = int(os.environ.get("NUM_INTER_LOOP_LAYERS", 0))
     num_epilogue_layers = int(os.environ.get("NUM_EPILOGUE_LAYERS", 3))
     lora_rank = int(os.environ.get("LORA_RANK", 8))
     mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
@@ -94,6 +96,11 @@ class Hyperparameters:
     ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
     dtg_enabled = bool(int(os.environ.get("DTG_ENABLED", "0")))
     late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.0))
+    ema_enabled = bool(int(os.environ.get("EMA_ENABLED", "0")))
+    ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
+    weight_noise_enabled = bool(int(os.environ.get("WEIGHT_NOISE_ENABLED", "1")))
+    weight_noise_scale = float(os.environ.get("WEIGHT_NOISE_SCALE", 0.02))
+    weight_noise_start_frac = float(os.environ.get("WEIGHT_NOISE_START_FRAC", 0.3))
     ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
     ve_dim = int(os.environ.get("VE_DIM", 128))
     ve_layers = os.environ.get("VE_LAYERS", "9,10")
@@ -104,7 +111,7 @@ class Hyperparameters:
         part.strip()
         for part in os.environ.get(
             "COMPRESSION_SCHEMES",
-            "delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,delta_attn_int6_mlp_int4,raw_gptq,raw_int_mixed",
+            "delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_gptq,raw_int_mixed",
         ).split(",")
         if part.strip()
     )
@@ -357,19 +364,20 @@ def quantize_float_tensor(t: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def quantize_float_tensor_nbit(t: Tensor, bits: int) -> tuple[Tensor, Tensor]:
-    if bits >= 8:
+    if bits == 8:
         return quantize_float_tensor(t)
     qmax = (1 << (bits - 1)) - 1
+    qdtype = torch.int16 if bits > 8 else torch.int8
     t32 = t.float()
     if t32.ndim == 2:
         clip_abs = torch.quantile(t32.abs(), INT8_CLIP_Q, dim=1) if t32.numel() else torch.empty((t32.shape[0],), dtype=torch.float32)
         clipped = torch.maximum(torch.minimum(t32, clip_abs[:, None]), -clip_abs[:, None])
         scale = (clip_abs / qmax).clamp_min(1.0 / qmax)
-        q = torch.clamp(torch.round(clipped / scale[:, None]), -qmax, qmax).to(torch.int8).contiguous()
+        q = torch.clamp(torch.round(clipped / scale[:, None]), -qmax, qmax).to(qdtype).contiguous()
         return q, scale.to(dtype=INT8_PER_ROW_SCALE_DTYPE).contiguous()
     clip_abs = float(torch.quantile(t32.abs().flatten(), INT8_CLIP_Q).item()) if t32.numel() else 0.0
     scale = torch.tensor(clip_abs / qmax if clip_abs > 0 else 1.0, dtype=torch.float32)
-    q = torch.clamp(torch.round(torch.clamp(t32, -clip_abs, clip_abs) / scale), -qmax, qmax).to(torch.int8).contiguous()
+    q = torch.clamp(torch.round(torch.clamp(t32, -clip_abs, clip_abs) / scale), -qmax, qmax).to(qdtype).contiguous()
     return q, scale
 
 
@@ -605,10 +613,23 @@ class RMSNorm(nn.Module):
         self.eps = eps
     def forward(self, x: Tensor) -> Tensor:
         return F.rms_norm(x, (x.size(-1),), eps=self.eps)
+
+
+def maybe_apply_weight_noise(w: Tensor) -> Tensor:
+    if not (CastedLinear._weight_noise_enabled and w.ndim == 2):
+        return w
+    row_rms = w.float().pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(1e-6).to(dtype=w.dtype)
+    return w + torch.randn_like(w) * (row_rms * CastedLinear._weight_noise_scale)
+
+
 class CastedLinear(nn.Linear):
     _qat_enabled: bool = False
+    _weight_noise_enabled: bool = False
+    _weight_noise_scale: float = 0.0
     def forward(self, x: Tensor) -> Tensor:
         w = self.weight.to(x.dtype)
+        if self.training:
+            w = maybe_apply_weight_noise(w)
         if CastedLinear._qat_enabled and self.training and w.ndim == 2:
             with torch.no_grad():
                 w32 = self.weight.float()
@@ -747,12 +768,13 @@ class LowRankAdapter(nn.Module):
     def effective_weight(self, base_weight: Tensor, dtype: torch.dtype, device: torch.device, rope: LayerRoPE | None = None) -> Tensor:
         weight = base_weight.to(device=device, dtype=dtype)
         if self.a is None or self.b is None:
-            return weight
+            return maybe_apply_weight_noise(weight) if self.training else weight
         a = self.a.to(device=device, dtype=dtype)
         if rope is not None:
             a = rope.rotate_columns(a)
         b = self.b.to(device=device, dtype=dtype)
-        return weight + (b @ a) * self.scale
+        eff = weight + (b @ a) * self.scale
+        return maybe_apply_weight_noise(eff) if self.training else eff
 
 
 class LoopPassAdapter(nn.Module):
@@ -1065,8 +1087,10 @@ class GPT(nn.Module):
         sliding_chunk_size: int = 0,
         shifted_attention_layers: int = 3,
         num_prelude_layers: int = 2,
+        num_loop_groups: int = 1,
         num_loop_layers: int = 3,
         loop_repeats: int = 2,
+        num_inter_loop_layers: int = 0,
         num_epilogue_layers: int = 3,
         lora_rank: int = 8,
         ve_enabled: bool = False,
@@ -1084,10 +1108,17 @@ class GPT(nn.Module):
         self.xsa_last_n = xsa_last_n
         self.ln_scale = ln_scale
         self.num_prelude_layers = num_prelude_layers
+        self.num_loop_groups = num_loop_groups
         self.num_loop_layers = num_loop_layers
         self.loop_repeats = loop_repeats
+        self.num_inter_loop_layers = num_inter_loop_layers
         self.num_epilogue_layers = num_epilogue_layers
-        self.effective_depth = num_prelude_layers + num_loop_layers * loop_repeats + num_epilogue_layers
+        self.effective_depth = (
+            num_prelude_layers
+            + num_loop_groups * (num_loop_layers * loop_repeats)
+            + max(num_loop_groups - 1, 0) * num_inter_loop_layers
+            + num_epilogue_layers
+        )
         if num_layers != self.effective_depth:
             raise ValueError(
                 f"NUM_LAYERS must match looping depth, got {num_layers} vs {self.effective_depth}"
@@ -1120,30 +1151,63 @@ class GPT(nn.Module):
                 for _ in range(num_prelude_layers)
             ]
         )
-        self.loop_blocks = nn.ModuleList(
+        self.loop_groups = nn.ModuleList(
             [
-                Block(
-                    model_dim,
-                    num_heads,
-                    num_kv_heads,
-                    mlp_mult,
-                    rope_base,
-                    qk_gain_init,
-                    sliding_window_size,
-                    sliding_chunk_size,
-                    self.shift_offsets,
-                    dtg=dtg,
+                nn.ModuleDict(
+                    {
+                        "blocks": nn.ModuleList(
+                            [
+                                Block(
+                                    model_dim,
+                                    num_heads,
+                                    num_kv_heads,
+                                    mlp_mult,
+                                    rope_base,
+                                    qk_gain_init,
+                                    sliding_window_size,
+                                    sliding_chunk_size,
+                                    self.shift_offsets,
+                                    dtg=dtg,
+                                )
+                                for _ in range(num_loop_layers)
+                            ]
+                        ),
+                        "adapters": nn.ModuleList(
+                            [
+                                nn.ModuleList(
+                                    [
+                                        LoopPassAdapter(model_dim, num_heads, num_kv_heads, int(mlp_mult * model_dim), lora_rank)
+                                        for _ in range(loop_repeats)
+                                    ]
+                                )
+                                for _ in range(num_loop_layers)
+                            ]
+                        ),
+                    }
                 )
-                for _ in range(num_loop_layers)
+                for _ in range(num_loop_groups)
             ]
         )
-        mlp_hidden = int(mlp_mult * model_dim)
-        self.loop_adapters = nn.ModuleList(
+        self.inter_loop_blocks = nn.ModuleList(
             [
                 nn.ModuleList(
-                    [LoopPassAdapter(model_dim, num_heads, num_kv_heads, mlp_hidden, lora_rank) for _ in range(loop_repeats)]
+                    [
+                        Block(
+                            model_dim,
+                            num_heads,
+                            num_kv_heads,
+                            mlp_mult,
+                            rope_base,
+                            qk_gain_init,
+                            sliding_window_size,
+                            sliding_chunk_size,
+                            self.shift_offsets,
+                            dtg=dtg,
+                        )
+                        for _ in range(num_inter_loop_layers)
+                    ]
                 )
-                for _ in range(num_loop_layers)
+                for _ in range(max(num_loop_groups - 1, 0))
             ]
         )
         self.epilogue_blocks = nn.ModuleList(
@@ -1191,7 +1255,13 @@ class GPT(nn.Module):
         self._init_weights()
 
     def _all_blocks(self) -> list[Block]:
-        return [*self.prelude_blocks, *self.loop_blocks, *self.epilogue_blocks]
+        blocks = [*self.prelude_blocks]
+        for group_idx, loop_group in enumerate(self.loop_groups):
+            blocks.extend(loop_group["blocks"])
+            if group_idx < len(self.inter_loop_blocks):
+                blocks.extend(self.inter_loop_blocks[group_idx])
+        blocks.extend(self.epilogue_blocks)
+        return blocks
 
     def _init_weights(self) -> None:
         if self.init_impl not in {"legacy", "stateless_ortho_v1"}:
@@ -1260,9 +1330,13 @@ class GPT(nn.Module):
 
         for block in self.prelude_blocks:
             run_block(block)
-        for repeat_idx in range(self.loop_repeats):
-            for block_idx, block in enumerate(self.loop_blocks):
-                run_block(block, adapter=self.loop_adapters[block_idx][repeat_idx])
+        for group_idx, loop_group in enumerate(self.loop_groups):
+            for repeat_idx in range(self.loop_repeats):
+                for block_idx, block in enumerate(loop_group["blocks"]):
+                    run_block(block, adapter=loop_group["adapters"][block_idx][repeat_idx])
+            if group_idx < len(self.inter_loop_blocks):
+                for block in self.inter_loop_blocks[group_idx]:
+                    run_block(block)
         for block in self.epilogue_blocks:
             run_block(block)
         return self.final_norm(x)
@@ -1481,8 +1555,10 @@ def build_gpt(args: Hyperparameters, mtp_num_heads: int | None = None, mtp_loss_
         sliding_chunk_size=args.sliding_chunk_size,
         shifted_attention_layers=args.shifted_attention_layers,
         num_prelude_layers=args.num_prelude_layers,
+        num_loop_groups=args.num_loop_groups,
         num_loop_layers=args.num_loop_layers,
         loop_repeats=args.loop_repeats,
+        num_inter_loop_layers=args.num_inter_loop_layers,
         num_epilogue_layers=args.num_epilogue_layers,
         lora_rank=args.lora_rank,
         ve_enabled=args.ve_enabled,
@@ -1548,6 +1624,9 @@ def quantize_tensor_by_kind(t: Tensor, kind: str) -> tuple[dict[str, object], in
     if kind == "int8":
         q, s = quantize_float_tensor(t)
         return {"kind": "int", "bits": 8, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int10":
+        q, s = quantize_float_tensor_nbit(t, 10)
+        return {"kind": "int", "bits": 10, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
     if kind == "int6":
         q, s = quantize_float_tensor_nbit(t, 6)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
@@ -1616,6 +1695,10 @@ def dequantize_tensor_by_kind(obj: dict[str, object], orig_dtype: torch.dtype) -
 
 
 SCHEME_DEFS: dict[str, dict[str, object]] = {
+    "delta_attn_int10_mlp_int8": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int10", "mlp": "int8", "embed": "int8", "other": "int8"},
+    },
     "raw_gptq": {
         "source": "raw",
         "quant": {"attn": "gptq_int6", "mlp": "gptq_int6", "embed": "int8", "other": "int8"},
@@ -1631,10 +1714,6 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
     "delta_attn_int6_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
-    },
-    "delta_attn_int6_mlp_int4": {
-        "source": "delta_hybrid",
-        "quant": {"attn": "int6", "mlp": "int4", "embed": "int8", "other": "int8"},
     },
 }
 
@@ -1778,6 +1857,8 @@ def main() -> None:
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1}")
     CastedLinear._qat_enabled = args.qat_enabled
+    CastedLinear._weight_noise_enabled = False
+    CastedLinear._weight_noise_scale = args.weight_noise_scale
     base_model = build_gpt(args).to(device).bfloat16()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
@@ -1847,8 +1928,9 @@ def main() -> None:
     shifted_layers = list(range(min(args.shifted_attention_layers, base_model.effective_depth)))
     log0(f"XSA:last_{args.xsa_last_n} active_layers:{xsa_layers}")
     log0(
-        f"looping_layout prelude:{args.num_prelude_layers} loop_layers:{args.num_loop_layers} "
-        f"loop_repeats:{args.loop_repeats} epilogue:{args.num_epilogue_layers} "
+        f"looping_layout prelude:{args.num_prelude_layers} loop_groups:{args.num_loop_groups} "
+        f"loop_layers:{args.num_loop_layers} loop_repeats:{args.loop_repeats} "
+        f"inter_loop_layers:{args.num_inter_loop_layers} epilogue:{args.num_epilogue_layers} "
         f"effective_depth:{base_model.effective_depth} lora_rank:{args.lora_rank}"
     )
     log0(f"shifted_attention_layers:{shifted_layers}")
@@ -1873,6 +1955,11 @@ def main() -> None:
     log0(f"seed:{args.seed}")
     log0(f"init_seed:{args.init_seed} init_impl:{args.init_impl}")
     log0(f"export_mode:{args.export_mode}")
+    log0(
+        f"ema_enabled:{args.ema_enabled} ema_decay:{args.ema_decay} "
+        f"weight_noise_enabled:{args.weight_noise_enabled} weight_noise_scale:{args.weight_noise_scale} "
+        f"weight_noise_start_frac:{args.weight_noise_start_frac}"
+    )
     log0(f"compression_schemes:{','.join(args.compression_schemes)}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     def zero_grad_all() -> None:
@@ -1916,8 +2003,7 @@ def main() -> None:
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     swa_state: dict[str, Tensor] | None = None
     swa_count = 0
-    ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()}
-    ema_decay = 0.997
+    ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()} if args.ema_enabled else None
     training_time_ms = 0.0
     stop_after_step: int | None = None
     torch.cuda.synchronize()
@@ -1956,6 +2042,8 @@ def main() -> None:
             break
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
+        noise_active = args.weight_noise_enabled and (step / max(args.iterations, 1)) >= args.weight_noise_start_frac
+        CastedLinear._weight_noise_enabled = noise_active
         if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
             CastedLinear._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
@@ -1982,10 +2070,10 @@ def main() -> None:
         for opt in optimizers:
             opt.step()
         zero_grad_all()
-        # EMA update
-        with torch.no_grad():
-            for name, t in base_model.state_dict().items():
-                ema_state[name].mul_(ema_decay).add_(t.detach().float(), alpha=1.0 - ema_decay)
+        if args.ema_enabled and ema_state is not None:
+            with torch.no_grad():
+                for name, t in base_model.state_dict().items():
+                    ema_state[name].mul_(args.ema_decay).add_(t.detach().float(), alpha=1.0 - args.ema_decay)
         step += 1
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         if args.swa_enabled and scale < 0.2 and step % args.swa_every == 0:
@@ -2017,11 +2105,14 @@ def main() -> None:
         f"peak memory allocated: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB "
         f"reserved: {torch.cuda.max_memory_reserved() // 1024 // 1024} MiB"
     )
-    # Apply EMA weights (better than SWA alone per PR#401)
-    log0("ema:applying EMA weights")
+    CastedLinear._weight_noise_enabled = False
     current_state = base_model.state_dict()
-    avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
-    base_model.load_state_dict(avg_state, strict=True)
+    if args.ema_enabled and ema_state is not None:
+        log0("ema:applying EMA weights")
+        avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
+        base_model.load_state_dict(avg_state, strict=True)
+    else:
+        log0("ema:disabled using_online_weights")
     torch.cuda.synchronize()
     t_diag = time.perf_counter()
     diag_val_loss, diag_val_bpb = eval_val(
@@ -2030,7 +2121,7 @@ def main() -> None:
     )
     torch.cuda.synchronize()
     log0(
-        f"DIAGNOSTIC post_ema val_loss:{diag_val_loss:.4f} val_bpb:{diag_val_bpb:.4f} "
+        f"DIAGNOSTIC final_eval val_loss:{diag_val_loss:.4f} val_bpb:{diag_val_bpb:.4f} "
         f"eval_time:{1000.0 * (time.perf_counter() - t_diag):.0f}ms"
     )
     full_state_dict = base_model.state_dict()

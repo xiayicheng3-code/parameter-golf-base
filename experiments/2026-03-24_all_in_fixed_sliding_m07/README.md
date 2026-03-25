@@ -14,7 +14,8 @@ Cheap-screen experiment for the requested all-in stack:
 - Adds the looping-layer trunk with per-pass LoRA adapters and MLP-side LayerRoPE.
 - Uses step-wise loop-path operator fusion: each virtual pass materializes effective attention / MLP weights from base weights, LayerRoPE, and LoRA before the main matrix multiply.
 - Removes residual carry-through inside the block: each layer stores only its newly produced output rather than adding the input back in.
-- Keeps delta-hybrid export, mixed int6/int8 compression, fp16-sensitive tensor protection, VE, BigramHash, SmearGate, Partial RoPE, q_gain, EMA, and deep-layer XSA.
+- Keeps delta-hybrid export, higher-bit mixed compression, fp16-sensitive tensor protection, VE, BigramHash, SmearGate, Partial RoPE, q_gain, training-time weight noise, and deep-layer XSA.
+- Supports multiple loop groups in the middle trunk, with optional non-loop bridge layers between groups.
 
 ## Fixed design choices
 
@@ -31,12 +32,18 @@ SLIDING_WINDOW_SIZE=512
 SLIDING_CHUNK_SIZE=0
 SHIFTED_ATTENTION_LAYERS=3
 NUM_PRELUDE_LAYERS=2
+NUM_LOOP_GROUPS=1
 NUM_LOOP_LAYERS=3
 LOOP_REPEATS=2
+NUM_INTER_LOOP_LAYERS=0
 NUM_EPILOGUE_LAYERS=3
 LORA_RANK=8
 MLP_MULT=4.0
-COMPRESSION_SCHEMES=delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,delta_attn_int6_mlp_int4,raw_gptq,raw_int_mixed
+COMPRESSION_SCHEMES=delta_attn_int10_mlp_int8,delta_attn_int8_mlp_int6,delta_attn_int6_mlp_int6,raw_gptq,raw_int_mixed
+EMA_ENABLED=0
+WEIGHT_NOISE_ENABLED=1
+WEIGHT_NOISE_SCALE=0.02
+WEIGHT_NOISE_START_FRAC=0.3
 ```
 
 The default depth layout is `2 + 3 x 2 + 3 = 11` effective layers, matching the default `NUM_LAYERS=11`.
