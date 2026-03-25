@@ -813,6 +813,10 @@ def shift_expanded_keys(k: Tensor, head_shifts: tuple[int, ...]) -> Tensor:
     return shifted
 
 
+def flash_attention_supports(dtype: torch.dtype, device: torch.device) -> bool:
+    return flash_attn_3_func is not None and device.type == "cuda" and dtype in {torch.float16, torch.bfloat16}
+
+
 def pairwise_rotate_last_dim(x: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
     half = x.size(-1) // 2
     x1, x2 = x[..., :half], x[..., half:]
@@ -968,6 +972,29 @@ class SlidingCausalSelfAttention(nn.Module):
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = apply_rotary_emb(q, cos, sin, self.rope_dims)
         k = apply_rotary_emb(k, cos, sin, self.rope_dims)
+        flash_local_fast_path = (
+            not shift_enabled
+            and self.window_size < seqlen
+            and flash_attention_supports(q.dtype, x.device)
+        )
+        if flash_local_fast_path:
+            q_flash = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
+            y = flash_attn_3_func(
+                q_flash,
+                k,
+                v,
+                causal=True,
+                window_size=(self.window_size - 1, 0),
+            )
+            if use_xsa_override:
+                v_flash = expand_kv_heads(v.transpose(1, 2), self.num_heads)
+                y = self._xsa_efficient(y.transpose(1, 2), v_flash).transpose(1, 2)
+            y = y.contiguous().reshape(bsz, seqlen, dim)
+            proj_in = y
+            if adapter is not None:
+                proj_weight = adapter.attn_proj.effective_weight(self.proj.weight, proj_in.dtype, proj_in.device)
+                return F.linear(proj_in, proj_weight)
+            return self.proj(proj_in)
         q = (q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]).transpose(1, 2)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
