@@ -2058,6 +2058,17 @@ def quantize_tensor_by_kind(t: Tensor, kind: str) -> tuple[dict[str, object], in
     if kind == "int6":
         q, s = quantize_float_tensor_nbit(t, 6)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int5":
+        q, s = quantize_float_tensor_nbit(t, 5)
+        packed = pack_lowbit_tensor(q, 5)
+        return {
+            "kind": "int_packed",
+            "bits": 5,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "int7":
         q, s = quantize_float_tensor_nbit(t, 7)
         packed = pack_lowbit_tensor(q, 7)
@@ -2191,6 +2202,36 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
     "delta_attn_int6_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int6_mlp_int4": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int6", "mlp": "int4", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int5_mlp_int4": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int5", "mlp": "int4", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int6_mlp_int5": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int6", "mlp": "int5", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int7_mlp_int6": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int7", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int7_mlp_int5": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int7", "mlp": "int5", "embed": "int8", "other": "int8"},
         "compressor": "zstd_or_zlib",
         "evaluate_after_export": True,
     },
@@ -2369,7 +2410,10 @@ def main() -> None:
     restore_low_dim_params_to_fp32(base_model)
     init_state_cpu = build_init_state_dict(args)
     compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
-    ddp_find_unused = bool(args.control_baseline or args.experimental_all_in)
+    # The control baseline now routes through a single stable graph with no known dead parameters.
+    # Keep unused-parameter detection only for the experimental path, where optional branches and
+    # staged modules can still leave parameters inactive.
+    ddp_find_unused = bool(args.experimental_all_in and not args.control_baseline)
     model: nn.Module = (
         DDP(
             compiled_model,

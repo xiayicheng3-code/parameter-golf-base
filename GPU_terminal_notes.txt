@@ -1,4 +1,4 @@
-Paste this at the start of a pod:
+Paste this at the start of a pod( Always use a pod in NA!):
 
 
 

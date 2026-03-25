@@ -99,6 +99,12 @@ Main full-eval schemes kept in the same file:
 - `delta_attn_int8_mlp_int6`
 - `delta_attn_int10_mlp_int8`
 - `delta_attn_int9_mlp_int7`
+- `delta_attn_int7_mlp_int6`
+- `delta_attn_int7_mlp_int5`
+- `delta_attn_int6_mlp_int6`
+- `delta_attn_int6_mlp_int5`
+- `delta_attn_int6_mlp_int4`
+- `delta_attn_int5_mlp_int4`
 
 Size-probe only schemes:
 
