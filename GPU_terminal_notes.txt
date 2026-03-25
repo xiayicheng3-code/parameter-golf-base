@@ -1,0 +1,14 @@
+Paste this at the start of a pod:
+
+
+
+cd /workspace
+
+if [ ! -d /workspace/parameter-golf-base ]; then
+  git clone https://github.com/xiayicheng3-code/parameter-golf-base.git
+fi
+
+cd /workspace/parameter-golf-base
+git pull --ff-only https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
+
+python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10

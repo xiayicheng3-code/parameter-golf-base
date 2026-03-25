@@ -1732,7 +1732,9 @@ def main() -> None:
     enable_cudnn_sdp(False)
     enable_flash_sdp(True)
     enable_mem_efficient_sdp(False)
-    enable_math_sdp(False)
+    # Sliding-window attention uses an explicit causal mask, which flash-only SDP
+    # cannot handle reliably under torch.compile fake-tensor tracing.
+    enable_math_sdp(True)
     logfile = None
     if master_process:
         os.makedirs("logs", exist_ok=True)
@@ -1851,7 +1853,7 @@ def main() -> None:
     )
     log0(f"shifted_attention_layers:{shifted_layers}")
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
-    log0("sdp_backends:cudnn=False flash=True mem_efficient=False math=False")
+    log0("sdp_backends:cudnn=False flash=True mem_efficient=False math=True")
     log0(
         f"attention_mode:fixed_sliding_shifted num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads} "
         f"sliding_window_size:{args.sliding_window_size} "
