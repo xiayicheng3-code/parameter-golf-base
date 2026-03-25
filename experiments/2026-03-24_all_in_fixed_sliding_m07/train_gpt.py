@@ -1751,6 +1751,12 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
         "compressor": "zstd_or_zlib",
         "evaluate_after_export": False,
     },
+    "delta_attn_int9_mlp_int7": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int9", "mlp": "int7", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
     "delta_attn_int10_mlp_int7_sizeonly": {
         "source": "delta_hybrid",
         "quant": {"attn": "int10", "mlp": "int7", "embed": "int8", "other": "int8"},
