@@ -460,6 +460,28 @@ def pack_lowbit_tensor(q: Tensor, bits: int) -> Tensor:
     return torch.from_numpy(out.copy())
 
 
+def pack_bitplane_signed_tensor(q: Tensor, bits: int) -> Tensor:
+    if bits <= 0 or bits > 8:
+        raise ValueError(f"Unsupported bitplane bits={bits}")
+    qmax = (1 << (bits - 1)) - 1
+    vals = (
+        q.detach().to("cpu", dtype=torch.int16).reshape(-1).numpy().astype(np.int16, copy=False) + qmax
+    ).astype(np.uint8)
+    group_size = 8
+    pad = (-vals.size) % group_size
+    if pad:
+        vals = np.pad(vals, (0, pad))
+    groups = vals.reshape(-1, group_size)
+    planes = []
+    for bit in range(bits - 1, -1, -1):
+        plane = ((groups >> bit) & 1).astype(np.uint8)
+        weights = (1 << np.arange(group_size - 1, -1, -1, dtype=np.uint8)).astype(np.uint8)
+        packed_plane = (plane * weights[None, :]).sum(axis=1, dtype=np.uint16).astype(np.uint8)
+        planes.append(packed_plane)
+    out = np.stack(planes, axis=1).reshape(-1)
+    return torch.from_numpy(out.copy())
+
+
 def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
     if bits not in {4, 5, 6, 7, 9, 10}:
         raise ValueError(f"Unsupported lowbit unpack bits={bits}")
@@ -497,6 +519,23 @@ def unpack_lowbit_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
     vals -= qmax
     out_dtype = np.int16 if bits > 8 else np.int8
     return torch.from_numpy(vals.astype(out_dtype, copy=False).copy())
+
+
+def unpack_bitplane_signed_tensor(packed: Tensor, bits: int, numel: int) -> Tensor:
+    if bits <= 0 or bits > 8:
+        raise ValueError(f"Unsupported bitplane bits={bits}")
+    raw = packed.detach().to("cpu", dtype=torch.uint8).reshape(-1).numpy().astype(np.uint8, copy=False)
+    if raw.size % bits != 0:
+        raise ValueError(f"Packed bitplane byte count {raw.size} is not divisible by bits={bits}")
+    groups = raw.reshape(-1, bits)
+    vals = np.zeros((groups.shape[0], 8), dtype=np.uint8)
+    for plane_idx in range(bits):
+        byte = groups[:, plane_idx][:, None]
+        extracted = ((byte >> np.arange(7, -1, -1, dtype=np.uint8)) & 1).astype(np.uint8)
+        vals |= extracted << (bits - 1 - plane_idx)
+    qmax = (1 << (bits - 1)) - 1
+    signed = vals.reshape(-1)[:numel].astype(np.int16) - qmax
+    return torch.from_numpy(signed.astype(np.int8, copy=False).copy())
 
 
 def pack_unsigned_lowbit_tensor(codes: Tensor, bits: int) -> Tensor:
@@ -2058,6 +2097,17 @@ def quantize_tensor_by_kind(t: Tensor, kind: str) -> tuple[dict[str, object], in
     if kind == "int6":
         q, s = quantize_float_tensor_nbit(t, 6)
         return {"kind": "int", "bits": 6, "q": q, "scale": s}, tensor_nbytes(q) + tensor_nbytes(s)
+    if kind == "int6_bp":
+        q, s = quantize_float_tensor_nbit(t, 6)
+        packed = pack_bitplane_signed_tensor(q, 6)
+        return {
+            "kind": "int_bitplane",
+            "bits": 6,
+            "q": packed,
+            "scale": s,
+            "shape": list(t.shape),
+            "numel": int(t.numel()),
+        }, tensor_nbytes(packed) + tensor_nbytes(s)
     if kind == "int5":
         q, s = quantize_float_tensor_nbit(t, 5)
         packed = pack_lowbit_tensor(q, 5)
@@ -2134,6 +2184,12 @@ def dequantize_tensor_by_kind(obj: dict[str, object], orig_dtype: torch.dtype) -
         if getattr(s, "ndim", 0) > 0:
             return (q.float() * s.float().view(q.shape[0], *([1] * (q.ndim - 1)))).to(orig_dtype).contiguous()
         return (q.float() * float(s.item())).to(orig_dtype).contiguous()
+    if obj["kind"] == "int_bitplane":
+        q = unpack_bitplane_signed_tensor(obj["q"], int(obj["bits"]), int(obj["numel"])).view(obj["shape"])
+        s = obj["scale"]
+        if getattr(s, "ndim", 0) > 0:
+            return (q.float() * s.float().view(q.shape[0], *([1] * (q.ndim - 1)))).to(orig_dtype).contiguous()
+        return (q.float() * float(s.item())).to(orig_dtype).contiguous()
     if obj["kind"] == "minifloat":
         bits = int(obj["bits"])
         if bits == 6:
@@ -2193,6 +2249,12 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
         "compressor": "zstd_or_zlib",
         "evaluate_after_export": True,
     },
+    "raw_int6_bitplane": {
+        "source": "raw",
+        "quant": {"attn": "int6_bp", "mlp": "int6_bp", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
     "delta_attn_int8_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int8", "mlp": "int6", "embed": "int8", "other": "int8"},
@@ -2202,6 +2264,18 @@ SCHEME_DEFS: dict[str, dict[str, object]] = {
     "delta_attn_int6_mlp_int6": {
         "source": "delta_hybrid",
         "quant": {"attn": "int6", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int6bp_mlp_int6": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int6_bp", "mlp": "int6", "embed": "int8", "other": "int8"},
+        "compressor": "zstd_or_zlib",
+        "evaluate_after_export": True,
+    },
+    "delta_attn_int6bp_mlp_int6bp": {
+        "source": "delta_hybrid",
+        "quant": {"attn": "int6_bp", "mlp": "int6_bp", "embed": "int8", "other": "int8"},
         "compressor": "zstd_or_zlib",
         "evaluate_after_export": True,
     },

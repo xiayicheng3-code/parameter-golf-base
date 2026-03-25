@@ -96,9 +96,12 @@ Main full-eval schemes kept in the same file:
 
 - `raw_sota_int6_lzma`
 - `raw_int_mixed`
+- `raw_int6_bitplane`
 - `delta_attn_int8_mlp_int6`
 - `delta_attn_int10_mlp_int8`
 - `delta_attn_int9_mlp_int7`
+- `delta_attn_int6bp_mlp_int6`
+- `delta_attn_int6bp_mlp_int6bp`
 - `delta_attn_int7_mlp_int6`
 - `delta_attn_int7_mlp_int5`
 - `delta_attn_int6_mlp_int6`
@@ -167,4 +170,5 @@ torchrun --standalone --nproc_per_node=1 train_gpt.py
 - Late QAT is implemented with per-module tensor gates rather than a pure class-level flag so it
   remains active under `torch.compile`.
 - `INT7`, `INT9`, and `INT10` keep native packed export support in this same file.
+- `INT6` now also has an experimental bit-plane packing path for `zstd`-friendlier layout testing.
 - `INT9` uses streaming bit packing to avoid the old 72-bit overflow bug from the `uint64` path.
