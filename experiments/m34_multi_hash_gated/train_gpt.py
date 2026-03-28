@@ -34,6 +34,15 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from flash_attn_interface import flash_attn_func as flash_attn_3_func
 
+
+def parse_int_csv(raw: str) -> list[int]:
+    return [int(part.strip()) for part in raw.split(",") if part.strip()]
+
+
+def parse_int_csv_env(name: str, default: str) -> list[int]:
+    return parse_int_csv(os.environ.get(name, default))
+
+
 # -----------------------------
 # HYPERPARAMETERS
 # -----------------------------
@@ -110,9 +119,12 @@ class Hyperparameters:
     late_qat = bool(int(os.environ.get("LATE_QAT", "0")))
     bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 4096))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
-    ngram_num_hashes = int(os.environ.get("NGRAM_NUM_HASHES", 1))
+    ngram_orders = parse_int_csv_env("NGRAM_ORDERS", "2")
+    ngram_vocab_sizes = parse_int_csv_env("NGRAM_VOCAB_SIZES", str(bigram_vocab_size))
+    ngram_num_hashes = parse_int_csv_env("NGRAM_NUM_HASHES", "1")
     ngram_mix_mode = os.environ.get("NGRAM_MIX_MODE", "single")
     ngram_attn_dim = int(os.environ.get("NGRAM_ATTN_DIM", 32))
+    ngram_insert_pos = os.environ.get("NGRAM_INSERT_POS", "before_smear")
 
 # -----------------------------
 # MUON OPTIMIZER
@@ -679,68 +691,112 @@ class SmearGate(nn.Module):
         return (1 - g) * x + g * x_prev
 
 
-class MultiHashNgramEmbedding(nn.Module):
+class MultiOrderFlatNgramEmbedding(nn.Module):
     HASH_A = (36313, 45817, 59243, 61297, 40127, 53453, 64811, 51749)
     HASH_B = (27191, 31847, 22541, 18233, 49789, 14629, 35317, 43117)
     HASH_C = (0, 7919, 15401, 21767, 31337, 47533, 61283, 65521)
 
     def __init__(
         self,
-        bigram_vocab_size: int,
-        bigram_dim: int,
+        ngram_orders: list[int],
+        ngram_vocab_sizes: list[int],
+        ngram_dim: int,
         model_dim: int,
-        num_hashes: int = 1,
+        num_hashes: list[int],
         mix_mode: str = "single",
         attn_dim: int = 32,
     ):
         super().__init__()
-        if num_hashes < 1:
-            raise ValueError(f"num_hashes must be >= 1, got {num_hashes}")
-        if num_hashes > len(self.HASH_A):
-            raise ValueError(f"num_hashes must be <= {len(self.HASH_A)}, got {num_hashes}")
+        if len(ngram_orders) != len(ngram_vocab_sizes) or len(ngram_orders) != len(num_hashes):
+            raise ValueError("NGRAM_ORDERS, NGRAM_VOCAB_SIZES, and NGRAM_NUM_HASHES must have the same length")
+        if not ngram_orders:
+            raise ValueError("At least one n-gram order is required")
         valid_mix_modes = {"single", "mean", "scalar_gate", "attn_lite"}
         if mix_mode not in valid_mix_modes:
             raise ValueError(f"Unsupported ngram mix mode: {mix_mode}")
-        self.bigram_vocab_size = bigram_vocab_size
-        self.num_hashes = num_hashes
+        self.ngram_orders = list(ngram_orders)
+        self.ngram_vocab_sizes = list(ngram_vocab_sizes)
+        self.num_hashes = list(num_hashes)
         self.mix_mode = mix_mode
         self.attn_dim = attn_dim
-        self.embed = nn.Embedding(num_hashes * bigram_vocab_size, bigram_dim)
+        self.total_candidates = sum(self.num_hashes)
+        group_offsets = []
+        total_embedding_rows = 0
+        for order, vocab_size, hashes in zip(self.ngram_orders, self.ngram_vocab_sizes, self.num_hashes):
+            if order < 2:
+                raise ValueError(f"n-gram order must be >= 2, got {order}")
+            if vocab_size < 2:
+                raise ValueError(f"vocab size must be >= 2, got {vocab_size}")
+            if hashes < 1:
+                raise ValueError(f"num_hashes must be >= 1, got {hashes}")
+            if hashes > len(self.HASH_A):
+                raise ValueError(f"num_hashes must be <= {len(self.HASH_A)}, got {hashes}")
+            group_offsets.append(total_embedding_rows)
+            total_embedding_rows += vocab_size * hashes
+        self.group_offsets = group_offsets
+        self.register_buffer("hash_a", torch.tensor(self.HASH_A, dtype=torch.int64), persistent=False)
+        self.register_buffer("hash_b", torch.tensor(self.HASH_B, dtype=torch.int64), persistent=False)
+        self.register_buffer("hash_c", torch.tensor(self.HASH_C, dtype=torch.int64), persistent=False)
+        self.embed = nn.Embedding(total_embedding_rows, ngram_dim)
         nn.init.zeros_(self.embed.weight)
-        self.proj = CastedLinear(bigram_dim, model_dim, bias=False) if bigram_dim != model_dim else None
+        self.proj = CastedLinear(ngram_dim, model_dim, bias=False) if ngram_dim != model_dim else None
         if self.proj is not None:
             nn.init.zeros_(self.proj.weight)
         if mix_mode == "scalar_gate":
-            self.gate = CastedLinear(model_dim, num_hashes, bias=False)
+            self.gate = CastedLinear(model_dim, self.total_candidates, bias=False)
             nn.init.zeros_(self.gate.weight)
         else:
             self.gate = None
         if mix_mode == "attn_lite":
             self.q_proj = CastedLinear(model_dim, attn_dim, bias=False)
-            self.k_proj = CastedLinear(bigram_dim, attn_dim, bias=False)
+            self.k_proj = CastedLinear(ngram_dim, attn_dim, bias=False)
+            self.attn_gate_x_proj = CastedLinear(model_dim, ngram_dim, bias=False)
+            self.attn_gate = CastedLinear(3 * ngram_dim, 3, bias=False)
             nn.init.zeros_(self.q_proj.weight)
             nn.init.zeros_(self.k_proj.weight)
+            nn.init.zeros_(self.attn_gate_x_proj.weight)
+            nn.init.zeros_(self.attn_gate.weight)
         else:
             self.q_proj = None
             self.k_proj = None
+            self.attn_gate_x_proj = None
+            self.attn_gate = None
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
 
-    def bigram_hash(self, tokens: Tensor) -> Tensor:
-        t = tokens.to(torch.int32)
-        mod = self.bigram_vocab_size - 1
-        out = torch.empty(*t.shape, self.num_hashes, device=t.device, dtype=torch.long)
-        for i in range(self.num_hashes):
-            table_offset = i * self.bigram_vocab_size
-            out[..., 0, i] = table_offset + mod
-            mixed = torch.bitwise_xor(
-                self.HASH_A[i] * t[..., 1:] + self.HASH_C[i],
-                self.HASH_B[i] * t[..., :-1],
-            ) % mod
-            out[..., 1:, i] = mixed.long() + table_offset
+    def ngram_hash(self, tokens_i64: Tensor, order: int, vocab_size: int, num_hashes: int, group_offset: int) -> Tensor:
+        mod = vocab_size - 1
+        out = torch.empty(*tokens_i64.shape, num_hashes, device=tokens_i64.device, dtype=torch.long)
+        invalid_until = order - 1
+        hash_ids = torch.arange(num_hashes, device=tokens_i64.device, dtype=torch.int64)
+        base_offsets = group_offset + hash_ids * vocab_size
+        base_offsets_view = base_offsets.view(*([1] * tokens_i64.dim()), num_hashes)
+        out[..., :invalid_until, :] = base_offsets_view + mod
+        if invalid_until >= tokens_i64.size(-1):
+            return out
+        valid_tokens = tokens_i64[..., invalid_until:]
+        mixed = torch.zeros(*valid_tokens.shape, num_hashes, device=tokens_i64.device, dtype=torch.int64)
+        hash_a = self.hash_a[:num_hashes]
+        hash_b = self.hash_b[:num_hashes]
+        hash_c = self.hash_c[:num_hashes]
+        coeff_view = [1] * tokens_i64.dim() + [num_hashes]
+        for j in range(order):
+            tok_slice = tokens_i64[..., invalid_until - j : tokens_i64.size(-1) - j].unsqueeze(-1)
+            a = (hash_a + 17 * j).view(*coeff_view)
+            b = (hash_b + 29 * j).view(*coeff_view)
+            c = (hash_c + 131 * j).view(*coeff_view)
+            mixed = torch.bitwise_xor(mixed + a * tok_slice + c, b * tok_slice)
+        out[..., invalid_until:, :] = (mixed % mod + base_offsets_view).long()
         return out
 
     def forward(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
-        h = self.embed(self.bigram_hash(token_ids))
+        tokens_i64 = token_ids.to(torch.int64)
+        candidate_ids = []
+        for order, vocab_size, hashes, group_offset in zip(
+            self.ngram_orders, self.ngram_vocab_sizes, self.num_hashes, self.group_offsets
+        ):
+            candidate_ids.append(self.ngram_hash(tokens_i64, order, vocab_size, hashes, group_offset))
+        all_candidate_ids = torch.cat(candidate_ids, dim=-1)
+        h = self.embed(all_candidate_ids)
         if self.mix_mode == "single":
             h = h[..., 0, :]
         elif self.mix_mode == "mean":
@@ -750,11 +806,20 @@ class MultiHashNgramEmbedding(nn.Module):
             gate = F.softmax(gate_logits, dim=-1).unsqueeze(-1)
             h = (h * gate).sum(dim=-2)
         elif self.mix_mode == "attn_lite":
+            h_mean = h.mean(dim=-2)
             q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
             k = self.k_proj(h.reshape(-1, h.size(-1))).reshape(*h.shape[:-1], self.attn_dim).to(dtype=h.dtype)
             scores = (q * k).sum(dim=-1) / math.sqrt(self.attn_dim)
             attn = F.softmax(scores, dim=-1).unsqueeze(-1)
-            h = (h * attn).sum(dim=-2)
+            h_attn = (h * attn).sum(dim=-2)
+            x_gate = self.attn_gate_x_proj(token_embed).to(dtype=h.dtype)
+            x_gate = F.rms_norm(x_gate, (x_gate.size(-1),))
+            h_mean_norm = F.rms_norm(h_mean, (h_mean.size(-1),))
+            h_attn_norm = F.rms_norm(h_attn, (h_attn.size(-1),))
+            gate_input = torch.cat((x_gate, h_mean_norm, h_attn_norm), dim=-1)
+            mix_logits = self.attn_gate(gate_input).to(dtype=h.dtype)
+            mix = F.softmax(mix_logits, dim=-1)
+            h = mix[..., 1:2] * h_mean + mix[..., 2:3] * h_attn
         if self.proj is not None:
             h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
@@ -824,9 +889,12 @@ class GPT(nn.Module):
         mtp_loss_weight: float = 0.1,
         bigram_vocab_size: int = 0,
         bigram_dim: int = 128,
-        ngram_num_hashes: int = 1,
+        ngram_orders: list[int] | None = None,
+        ngram_vocab_sizes: list[int] | None = None,
+        ngram_num_hashes: list[int] | None = None,
         ngram_mix_mode: str = "single",
         ngram_attn_dim: int = 32,
+        ngram_insert_pos: str = "before_smear",
         xsa_last_n: int = 0,
         rope_dims: int = 0,
         ln_scale: bool = False,
@@ -839,10 +907,20 @@ class GPT(nn.Module):
         self.logit_softcap = logit_softcap
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
+        if ngram_insert_pos not in {"before_smear", "after_smear"}:
+            raise ValueError(f"Unsupported NGRAM_INSERT_POS: {ngram_insert_pos}")
+        self.ngram_insert_pos = ngram_insert_pos
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        if ngram_orders is None:
+            ngram_orders = [2]
+        if ngram_vocab_sizes is None:
+            ngram_vocab_sizes = [bigram_vocab_size]
+        if ngram_num_hashes is None:
+            ngram_num_hashes = [1]
         self.bigram = (
-            MultiHashNgramEmbedding(
-                bigram_vocab_size,
+            MultiOrderFlatNgramEmbedding(
+                ngram_orders,
+                ngram_vocab_sizes,
                 bigram_dim,
                 model_dim,
                 num_hashes=ngram_num_hashes,
@@ -887,6 +965,16 @@ class GPT(nn.Module):
                 self.blocks[i].attn.use_xsa = True
         self._init_weights()
 
+    def apply_input_features(self, input_ids: Tensor) -> Tensor:
+        x = self.tok_emb(input_ids)
+        if self.bigram is not None and self.ngram_insert_pos == "before_smear":
+            x = x + self.bigram(input_ids, x)
+        x = F.rms_norm(x, (x.size(-1),))
+        x = self.smear(x)
+        if self.bigram is not None and self.ngram_insert_pos == "after_smear":
+            x = x + self.bigram(input_ids, x)
+        return x
+
     def _init_weights(self) -> None:
         if self.tie_embeddings:
             nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.tied_embed_init_std)
@@ -902,11 +990,7 @@ class GPT(nn.Module):
                             module.weight.mul_(1.0 / math.sqrt(2 * num_layers))
 
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
-        x = self.tok_emb(input_ids)
-        if self.bigram is not None:
-            x = x + self.bigram(input_ids, x)
-        x = F.rms_norm(x, (x.size(-1),))
-        x = self.smear(x)
+        x = self.apply_input_features(input_ids)
         x0 = x
         skips: list[Tensor] = []
 
@@ -951,11 +1035,7 @@ class GPT(nn.Module):
 
     def forward_logits(self, input_ids: Tensor) -> Tensor:
         """Return logits (bsz, seq_len, vocab) without computing loss."""
-        x = self.tok_emb(input_ids)
-        if self.bigram is not None:
-            x = x + self.bigram(input_ids, x)
-        x = F.rms_norm(x, (x.size(-1),))
-        x = self.smear(x)
+        x = self.apply_input_features(input_ids)
         x0 = x
         skips: list[Tensor] = []
         for i in range(self.num_encoder_layers):
@@ -1259,9 +1339,12 @@ def main() -> None:
         mtp_loss_weight=args.mtp_loss_weight,
         bigram_vocab_size=args.bigram_vocab_size,
         bigram_dim=args.bigram_dim,
+        ngram_orders=args.ngram_orders,
+        ngram_vocab_sizes=args.ngram_vocab_sizes,
         ngram_num_hashes=args.ngram_num_hashes,
         ngram_mix_mode=args.ngram_mix_mode,
         ngram_attn_dim=args.ngram_attn_dim,
+        ngram_insert_pos=args.ngram_insert_pos,
         xsa_last_n=args.xsa_last_n,
         rope_dims=args.rope_dims,
         ln_scale=args.ln_scale,
@@ -1308,6 +1391,10 @@ def main() -> None:
             matrix_params.append(base_model.bigram.q_proj.weight)
         if base_model.bigram.k_proj is not None:
             matrix_params.append(base_model.bigram.k_proj.weight)
+        if base_model.bigram.attn_gate_x_proj is not None:
+            matrix_params.append(base_model.bigram.attn_gate_x_proj.weight)
+        if base_model.bigram.attn_gate is not None:
+            matrix_params.append(base_model.bigram.attn_gate.weight)
     optimizer_tok = torch.optim.AdamW(
         tok_params,
         betas=(args.beta1, args.beta2),
@@ -1600,9 +1687,12 @@ def main() -> None:
         logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
         mtp_num_heads=0, mtp_loss_weight=0.0,
         bigram_vocab_size=args.bigram_vocab_size, bigram_dim=args.bigram_dim,
+        ngram_orders=args.ngram_orders,
+        ngram_vocab_sizes=args.ngram_vocab_sizes,
         ngram_num_hashes=args.ngram_num_hashes,
         ngram_mix_mode=args.ngram_mix_mode,
         ngram_attn_dim=args.ngram_attn_dim,
+        ngram_insert_pos=args.ngram_insert_pos,
         xsa_last_n=args.xsa_last_n,
         rope_dims=args.rope_dims,
         ln_scale=args.ln_scale,
