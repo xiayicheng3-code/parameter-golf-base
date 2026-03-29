@@ -800,9 +800,15 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             return out
         valid_tokens = tokens_i32[..., invalid_until:]
         mixed = torch.zeros(*valid_tokens.shape, num_hashes, device=tokens_i32.device, dtype=torch.int32)
-        hash_a = self.hash_a[:num_hashes].to(device=tokens_i32.device)
-        hash_b = self.hash_b[:num_hashes].to(device=tokens_i32.device)
-        hash_c = self.hash_c[:num_hashes].to(device=tokens_i32.device)
+        if self.hash_a.device == tokens_i32.device:
+            hash_a = self.hash_a[:num_hashes]
+            hash_b = self.hash_b[:num_hashes]
+            hash_c = self.hash_c[:num_hashes]
+        else:
+            # Avoid GPU->CPU buffer copies when candidate ids are precomputed on CPU.
+            hash_a = torch.tensor(self.HASH_A[:num_hashes], dtype=torch.int32, device=tokens_i32.device)
+            hash_b = torch.tensor(self.HASH_B[:num_hashes], dtype=torch.int32, device=tokens_i32.device)
+            hash_c = torch.tensor(self.HASH_C[:num_hashes], dtype=torch.int32, device=tokens_i32.device)
         coeff_view = [1] * tokens_i32.dim() + [num_hashes]
         for j in range(order):
             tok_slice = tokens_i32[..., invalid_until - j : tokens_i32.size(-1) - j].unsqueeze(-1)
