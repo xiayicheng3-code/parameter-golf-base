@@ -11,6 +11,12 @@ Current mixing modes:
 - `scalar_gate`: context-conditioned scalar mixing over hash candidates
 - `attn_lite`: tiny query-key selection over hash candidates, followed by an `[x; attn_out]` pass-through gate
 
+Candidate-id execution modes:
+
+- `NGRAM_CANDIDATE_SOURCE=inline`: build hash candidate ids inside the compiled model
+- `NGRAM_CANDIDATE_SOURCE=gpu_eager`: build candidate ids outside the compiled model, but still on GPU
+- `NGRAM_CANDIDATE_SOURCE=cpu`: build candidate ids on CPU and pass them in as an extra model input
+
 Hypothesis:
 
 - Standard single-bucket bigram hashing wastes capacity on destructive collisions.
@@ -39,6 +45,7 @@ NGRAM_VOCAB_SIZES=4096,2048,1024 \
 NGRAM_NUM_HASHES=2,2,2 \
 NGRAM_MIX_MODE=scalar_gate \
 NGRAM_INSERT_POS=after_smear \
+NGRAM_CANDIDATE_SOURCE=inline \
 python3 train_gpt.py
 ```
 

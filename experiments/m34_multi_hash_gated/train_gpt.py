@@ -119,6 +119,7 @@ class Hyperparameters:
     late_qat = bool(int(os.environ.get("LATE_QAT", "0")))
     bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 4096))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
+    ngram_init_std = float(os.environ.get("NGRAM_INIT_STD", 0.005))
     default_ngram_vocab_sizes = ",".join(
         str(max(2, v)) for v in (bigram_vocab_size, bigram_vocab_size // 2, bigram_vocab_size // 4)
     )
@@ -128,6 +129,7 @@ class Hyperparameters:
     ngram_mix_mode = os.environ.get("NGRAM_MIX_MODE", "single")
     ngram_attn_dim = int(os.environ.get("NGRAM_ATTN_DIM", 32))
     ngram_insert_pos = os.environ.get("NGRAM_INSERT_POS", "before_smear")
+    ngram_candidate_source = os.environ.get("NGRAM_CANDIDATE_SOURCE", "inline")
 
 # -----------------------------
 # MUON OPTIMIZER
@@ -264,6 +266,7 @@ def load_validation_tokens(pattern: str, seq_len: int) -> Tensor:
 def eval_val(
     args: Hyperparameters,
     model: nn.Module,
+    candidate_model: nn.Module | None,
     rank: int,
     world_size: int,
     device: torch.device,
@@ -296,11 +299,14 @@ def eval_val(
             batch_seq_end = min(batch_seq_start + local_batch_seqs, seq_end)
             raw_start = batch_seq_start * seq_len
             raw_end = batch_seq_end * seq_len + 1
-            local = val_tokens[raw_start:raw_end].to(device=device, dtype=torch.int64, non_blocking=True)
-            x = local[:-1].reshape(-1, seq_len)
-            y = local[1:].reshape(-1, seq_len)
+            local = val_tokens[raw_start:raw_end].to(dtype=torch.int64)
+            x_cpu = local[:-1].reshape(-1, seq_len)
+            y_cpu = local[1:].reshape(-1, seq_len)
+            x, y, candidate_ids = prepare_ngram_inputs(
+                candidate_model, x_cpu, y_cpu, args.ngram_candidate_source, device
+            )
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                batch_loss = model(x, y).detach()
+                batch_loss = model(x, y, candidate_ids).detach()
             batch_token_count = float(y.numel())
             val_loss_sum += batch_loss.to(torch.float64) * batch_token_count
             val_token_count += batch_token_count
@@ -527,7 +533,9 @@ class DistributedTokenLoader:
         self.device = device
         self.stream = TokenStream(pattern)
 
-    def next_batch(self, global_tokens: int, seq_len: int, grad_accum_steps: int) -> tuple[Tensor, Tensor]:
+    def next_batch(
+        self, global_tokens: int, seq_len: int, grad_accum_steps: int, to_device: bool = True
+    ) -> tuple[Tensor, Tensor]:
         local_tokens = global_tokens // (self.world_size * grad_accum_steps)
         per_rank_span = local_tokens + 1
         chunk = self.stream.take(per_rank_span * self.world_size)
@@ -535,7 +543,9 @@ class DistributedTokenLoader:
         local = chunk[start : start + per_rank_span].to(dtype=torch.int64)
         x = local[:-1].reshape(-1, seq_len)
         y = local[1:].reshape(-1, seq_len)
-        return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+        if to_device:
+            return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+        return x, y
 
 # -----------------------------
 # TRANSFORMER MODULES
@@ -737,9 +747,9 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             group_offsets.append(total_embedding_rows)
             total_embedding_rows += vocab_size * hashes
         self.group_offsets = group_offsets
-        self.register_buffer("hash_a", torch.tensor(self.HASH_A, dtype=torch.int64), persistent=False)
-        self.register_buffer("hash_b", torch.tensor(self.HASH_B, dtype=torch.int64), persistent=False)
-        self.register_buffer("hash_c", torch.tensor(self.HASH_C, dtype=torch.int64), persistent=False)
+        self.register_buffer("hash_a", torch.tensor(self.HASH_A, dtype=torch.int32), persistent=False)
+        self.register_buffer("hash_b", torch.tensor(self.HASH_B, dtype=torch.int32), persistent=False)
+        self.register_buffer("hash_c", torch.tensor(self.HASH_C, dtype=torch.int32), persistent=False)
         self.embed = nn.Embedding(total_embedding_rows, ngram_dim)
         nn.init.zeros_(self.embed.weight)
         self.proj = CastedLinear(ngram_dim, model_dim, bias=False) if ngram_dim != model_dim else None
@@ -766,39 +776,54 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             self.attn_gate = None
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
 
-    def ngram_hash(self, tokens_i64: Tensor, order: int, vocab_size: int, num_hashes: int, group_offset: int) -> Tensor:
+    def reset_near_zero_parameters(self, init_std: float) -> None:
+        nn.init.normal_(self.embed.weight, mean=0.0, std=init_std)
+        if self.proj is not None:
+            nn.init.normal_(self.proj.weight, mean=0.0, std=init_std)
+        if self.gate is not None:
+            nn.init.normal_(self.gate.weight, mean=0.0, std=init_std)
+        if self.q_proj is not None:
+            nn.init.normal_(self.q_proj.weight, mean=0.0, std=init_std)
+            nn.init.normal_(self.k_proj.weight, mean=0.0, std=init_std)
+            nn.init.normal_(self.attn_gate_x_proj.weight, mean=0.0, std=init_std)
+            nn.init.normal_(self.attn_gate.weight, mean=0.0, std=init_std)
+
+    def ngram_hash(self, tokens_i32: Tensor, order: int, vocab_size: int, num_hashes: int, group_offset: int) -> Tensor:
         mod = vocab_size - 1
-        out = torch.empty(*tokens_i64.shape, num_hashes, device=tokens_i64.device, dtype=torch.long)
+        out = torch.empty(*tokens_i32.shape, num_hashes, device=tokens_i32.device, dtype=torch.int32)
         invalid_until = order - 1
-        hash_ids = torch.arange(num_hashes, device=tokens_i64.device, dtype=torch.int64)
+        hash_ids = torch.arange(num_hashes, device=tokens_i32.device, dtype=torch.int32)
         base_offsets = group_offset + hash_ids * vocab_size
-        base_offsets_view = base_offsets.view(*([1] * tokens_i64.dim()), num_hashes)
+        base_offsets_view = base_offsets.view(*([1] * tokens_i32.dim()), num_hashes)
         out[..., :invalid_until, :] = base_offsets_view + mod
-        if invalid_until >= tokens_i64.size(-1):
+        if invalid_until >= tokens_i32.size(-1):
             return out
-        valid_tokens = tokens_i64[..., invalid_until:]
-        mixed = torch.zeros(*valid_tokens.shape, num_hashes, device=tokens_i64.device, dtype=torch.int64)
-        hash_a = self.hash_a[:num_hashes]
-        hash_b = self.hash_b[:num_hashes]
-        hash_c = self.hash_c[:num_hashes]
-        coeff_view = [1] * tokens_i64.dim() + [num_hashes]
+        valid_tokens = tokens_i32[..., invalid_until:]
+        mixed = torch.zeros(*valid_tokens.shape, num_hashes, device=tokens_i32.device, dtype=torch.int32)
+        hash_a = self.hash_a[:num_hashes].to(device=tokens_i32.device)
+        hash_b = self.hash_b[:num_hashes].to(device=tokens_i32.device)
+        hash_c = self.hash_c[:num_hashes].to(device=tokens_i32.device)
+        coeff_view = [1] * tokens_i32.dim() + [num_hashes]
         for j in range(order):
-            tok_slice = tokens_i64[..., invalid_until - j : tokens_i64.size(-1) - j].unsqueeze(-1)
+            tok_slice = tokens_i32[..., invalid_until - j : tokens_i32.size(-1) - j].unsqueeze(-1)
             a = (hash_a + 17 * j).view(*coeff_view)
             b = (hash_b + 29 * j).view(*coeff_view)
             c = (hash_c + 131 * j).view(*coeff_view)
             mixed = torch.bitwise_xor(mixed + a * tok_slice + c, b * tok_slice)
-        out[..., invalid_until:, :] = (mixed % mod + base_offsets_view).long()
+        out[..., invalid_until:, :] = mixed % mod + base_offsets_view
         return out
 
-    def forward(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
-        tokens_i64 = token_ids.to(torch.int64)
+    def build_candidate_ids(self, token_ids: Tensor) -> Tensor:
+        tokens_i32 = token_ids.to(torch.int32)
         candidate_ids = []
         for order, vocab_size, hashes, group_offset in zip(
             self.ngram_orders, self.ngram_vocab_sizes, self.num_hashes, self.group_offsets
         ):
-            candidate_ids.append(self.ngram_hash(tokens_i64, order, vocab_size, hashes, group_offset))
-        all_candidate_ids = torch.cat(candidate_ids, dim=-1)
+            candidate_ids.append(self.ngram_hash(tokens_i32, order, vocab_size, hashes, group_offset))
+        return torch.cat(candidate_ids, dim=-1)
+
+    def forward(self, token_ids: Tensor, token_embed: Tensor, candidate_ids: Tensor | None = None) -> Tensor:
+        all_candidate_ids = self.build_candidate_ids(token_ids) if candidate_ids is None else candidate_ids
         h = self.embed(all_candidate_ids)
         if self.mix_mode == "single":
             h = h[..., 0, :]
@@ -882,6 +907,7 @@ class GPT(nn.Module):
         mlp_mult: int,
         tie_embeddings: bool,
         tied_embed_init_std: float,
+        ngram_init_std: float,
         logit_softcap: float,
         rope_base: float,
         qk_gain_init: float,
@@ -904,6 +930,7 @@ class GPT(nn.Module):
             raise ValueError(f"logit_softcap must be positive, got {logit_softcap}")
         self.tie_embeddings = tie_embeddings
         self.tied_embed_init_std = tied_embed_init_std
+        self.ngram_init_std = ngram_init_std
         self.logit_softcap = logit_softcap
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
@@ -964,15 +991,19 @@ class GPT(nn.Module):
             for i in range(max(0, num_layers - xsa_last_n), num_layers):
                 self.blocks[i].attn.use_xsa = True
         self._init_weights()
+        if self.bigram is not None:
+            # Apply n-gram-specific near-zero init after global model init so these
+            # weights stay alive without being overwritten by orthogonal defaults.
+            self.bigram.reset_near_zero_parameters(self.ngram_init_std)
 
-    def apply_input_features(self, input_ids: Tensor) -> Tensor:
+    def apply_input_features(self, input_ids: Tensor, candidate_ids: Tensor | None = None) -> Tensor:
         x = self.tok_emb(input_ids)
         if self.bigram is not None and self.ngram_insert_pos == "before_smear":
-            x = x + self.bigram(input_ids, x)
+            x = x + self.bigram(input_ids, x, candidate_ids)
         x = F.rms_norm(x, (x.size(-1),))
         x = self.smear(x)
         if self.bigram is not None and self.ngram_insert_pos == "after_smear":
-            x = x + self.bigram(input_ids, x)
+            x = x + self.bigram(input_ids, x, candidate_ids)
         return x
 
     def _init_weights(self) -> None:
@@ -989,8 +1020,8 @@ class GPT(nn.Module):
                         with torch.no_grad():
                             module.weight.mul_(1.0 / math.sqrt(2 * num_layers))
 
-    def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
-        x = self.apply_input_features(input_ids)
+    def forward(self, input_ids: Tensor, target_ids: Tensor, candidate_ids: Tensor | None = None) -> Tensor:
+        x = self.apply_input_features(input_ids, candidate_ids)
         x0 = x
         skips: list[Tensor] = []
 
@@ -1033,9 +1064,9 @@ class GPT(nn.Module):
 
         return main_loss
 
-    def forward_logits(self, input_ids: Tensor) -> Tensor:
+    def forward_logits(self, input_ids: Tensor, candidate_ids: Tensor | None = None) -> Tensor:
         """Return logits (bsz, seq_len, vocab) without computing loss."""
-        x = self.apply_input_features(input_ids)
+        x = self.apply_input_features(input_ids, candidate_ids)
         x0 = x
         skips: list[Tensor] = []
         for i in range(self.num_encoder_layers):
@@ -1051,6 +1082,39 @@ class GPT(nn.Module):
         else:
             logits_proj = self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+
+
+@torch.no_grad()
+def prepare_ngram_inputs(
+    candidate_model: nn.Module | None,
+    input_ids: Tensor,
+    target_ids: Tensor,
+    candidate_source: str,
+    device: torch.device,
+) -> tuple[Tensor, Tensor, Tensor | None]:
+    if candidate_source not in {"inline", "gpu_eager", "cpu"}:
+        raise ValueError(f"Unsupported NGRAM_CANDIDATE_SOURCE: {candidate_source}")
+    if candidate_model is None:
+        x = input_ids.to(device, non_blocking=True) if input_ids.device != device else input_ids
+        y = target_ids.to(device, non_blocking=True) if target_ids.device != device else target_ids
+        return x, y, None
+
+    bigram = getattr(candidate_model, "bigram", None)
+    if bigram is None or candidate_source == "inline":
+        x = input_ids.to(device, non_blocking=True) if input_ids.device != device else input_ids
+        y = target_ids.to(device, non_blocking=True) if target_ids.device != device else target_ids
+        return x, y, None
+
+    if candidate_source == "gpu_eager":
+        x = input_ids.to(device, non_blocking=True) if input_ids.device != device else input_ids
+        y = target_ids.to(device, non_blocking=True) if target_ids.device != device else target_ids
+        candidate_ids = bigram.build_candidate_ids(x)
+        return x, y, candidate_ids
+
+    candidate_ids = bigram.build_candidate_ids(input_ids)
+    x = input_ids.to(device, non_blocking=True) if input_ids.device != device else input_ids
+    y = target_ids.to(device, non_blocking=True) if target_ids.device != device else target_ids
+    return x, y, candidate_ids.to(device, non_blocking=True)
 
 
 # -----------------------------
@@ -1095,20 +1159,24 @@ def eval_val_sliding(
             batch_ws = my_windows[bi:bi + batch_seqs]
             bsz = len(batch_ws)
 
-            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+            x_batch_cpu = torch.zeros(bsz, seq_len, dtype=torch.int64)
+            y_batch_cpu = torch.zeros(bsz, seq_len, dtype=torch.int64)
             wlens: list[int] = []
 
             for i, ws in enumerate(batch_ws):
                 end = min(ws + seq_len, total_tokens)
                 wlen = end - ws
                 wlens.append(wlen)
-                chunk = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
-                x_batch[i, :wlen] = chunk[:-1]
-                y_batch[i, :wlen] = chunk[1:]
+                chunk = val_tokens[ws:end + 1].to(dtype=torch.int64)
+                x_batch_cpu[i, :wlen] = chunk[:-1]
+                y_batch_cpu[i, :wlen] = chunk[1:]
+
+            x_batch, y_batch, candidate_ids = prepare_ngram_inputs(
+                base_model, x_batch_cpu, y_batch_cpu, args.ngram_candidate_source, device
+            )
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                logits = compiled_logits(x_batch)
+                logits = compiled_logits(x_batch, candidate_ids)
 
             nll = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)).float(),
@@ -1332,6 +1400,7 @@ def main() -> None:
         mlp_mult=args.mlp_mult,
         tie_embeddings=args.tie_embeddings,
         tied_embed_init_std=args.tied_embed_init_std,
+        ngram_init_std=args.ngram_init_std,
         logit_softcap=args.logit_softcap,
         rope_base=args.rope_base,
         qk_gain_init=args.qk_gain_init,
@@ -1445,6 +1514,7 @@ def main() -> None:
         f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
+    log0(f"ngram_candidate_source:{args.ngram_candidate_source}")
     log0(f"seed:{args.seed}")
 
     # -----------------------------
@@ -1481,9 +1551,17 @@ def main() -> None:
             for micro_step in range(grad_accum_steps):
                 if distributed:
                     model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+                x_raw, y_raw = train_loader.next_batch(
+                    args.train_batch_tokens,
+                    args.train_seq_len,
+                    grad_accum_steps,
+                    to_device=args.ngram_candidate_source != "cpu",
+                )
+                x, y, candidate_ids = prepare_ngram_inputs(
+                    base_model, x_raw, y_raw, args.ngram_candidate_source, device
+                )
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                    warmup_loss = model(x, y)
+                    warmup_loss = model(x, y, candidate_ids)
                 (warmup_loss * grad_scale).backward()
             for opt in optimizers:
                 opt.step()
@@ -1525,6 +1603,7 @@ def main() -> None:
             val_loss, val_bpb = eval_val(
                 args,
                 model,
+                base_model,
                 rank,
                 world_size,
                 device,
@@ -1560,9 +1639,17 @@ def main() -> None:
         for micro_step in range(grad_accum_steps):
             if distributed:
                 model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            x_raw, y_raw = train_loader.next_batch(
+                args.train_batch_tokens,
+                args.train_seq_len,
+                grad_accum_steps,
+                to_device=args.ngram_candidate_source != "cpu",
+            )
+            x, y, candidate_ids = prepare_ngram_inputs(
+                base_model, x_raw, y_raw, args.ngram_candidate_source, device
+            )
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                loss = model(x, y)
+                loss = model(x, y, candidate_ids)
             train_loss += loss.detach()
             (loss * grad_scale).backward()
         train_loss /= grad_accum_steps
@@ -1684,6 +1771,7 @@ def main() -> None:
         vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
         num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
         tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
+        ngram_init_std=args.ngram_init_std,
         logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
         mtp_num_heads=0, mtp_loss_weight=0.0,
         bigram_vocab_size=args.bigram_vocab_size, bigram_dim=args.bigram_dim,
@@ -1708,7 +1796,7 @@ def main() -> None:
     torch.cuda.synchronize()
     t_qeval = time.perf_counter()
     q_val_loss, q_val_bpb = eval_val(
-        args, compiled_eval, rank, world_size, device, grad_accum_steps,
+        args, compiled_eval, eval_model, rank, world_size, device, grad_accum_steps,
         val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
         eval_seq_len=effective_eval_seq_len,
     )

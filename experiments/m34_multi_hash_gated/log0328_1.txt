@@ -1,0 +1,394 @@
+ _____                             _
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |
+                  |_|
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@4f3c2a4a8714:/workspace/parameter-golf# cd /workspace
+root@4f3c2a4a8714:/workspace# git clone https://github.com/xiayicheng3-code/parameter-golf-base.git || true
+Cloning into 'parameter-golf-base'...
+remote: Enumerating objects: 876, done.
+remote: Counting objects: 100% (13/13), done.
+remote: Compressing objects: 100% (11/11), done.
+remote: Total 876 (delta 4), reused 7 (delta 2), pack-reused 863 (from 3)
+Receiving objects: 100% (876/876), 2.24 MiB | 9.62 MiB/s, done.
+Resolving deltas: 100% (437/437), done.
+root@4f3c2a4a8714:/workspace# cd /workspace/parameter-golf-base
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git fetch origin
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git pull --ff-only
+Already up to date.
+root@4f3c2a4a8714:/workspace/parameter-golf-base#
+root@4f3c2a4a8714:/workspace/parameter-golf-base# python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+manifest.json: 1.93kB [00:00, 4.83MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|██████████████████████████████████████████| 124M/124M [00:01<00:00, 87.5MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 165MB/s]
+datasets/tokenizers/fineweb_1024_bpe.mod(…): 100%|███████████████████████████████████████████| 254k/254k [00:00<00:00, 614kB/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and fasterdownloads.
+fineweb_1024_bpe.vocab: 9.86kB [00:00, 10.3MB/s]
+root@4f3c2a4a8714:/workspace/parameter-golf-base# cd /workspace
+root@4f3c2a4a8714:/workspace# git clone https://github.com/xiayicheng3-code/parameter-golf-base.git || true
+fatal: destination path 'parameter-golf-base' already exists and is not an empty directory.
+root@4f3c2a4a8714:/workspace# cd /workspace/parameter-golf-base
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git fetch origin
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git pull --ff-only
+
+Already up to date.
+root@4f3c2a4a8714:/workspace/parameter-golf-base#
+root@4f3c2a4a8714:/workspace/parameter-golf-base# python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and fasterdownloads.
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 141MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 140MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 141MB/s]
+root@4f3c2a4a8714:/workspace/parameter-golf-base#
+root@4f3c2a4a8714:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git fetch origin
+root@4f3c2a4a8714:/workspace/parameter-golf-base# git pull --ff-only
+Already up to date.
+root@4f3c2a4a8714:/workspace/parameter-golf-base#
+root@4f3c2a4a8714:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34_multi_hash_gated
+root@4f3c2a4a8714:/workspace/parameter-golf-base/experiments/m34_multi_hash_gated# RUN_ID=m34_12L384_6h_attnlite_passthrough_222 \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> VOCAB_SIZE=1024 \
+> NUM_LAYERS=12 \
+> MODEL_DIM=384 \
+> NUM_HEADS=6 \
+> NUM_KV_HEADS=2 \
+> MLP_MULT=3.0 \
+> TRAIN_SEQ_LEN=2048 \
+> EVAL_SEQ_LEN=2048 \
+> TRAIN_BATCH_TOKENS=393216 \
+> VAL_BATCH_SIZE=262144 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> BIGRAM_DIM=96 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=4096,2048,1024 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_MIX_MODE=attn_lite \
+> NGRAM_INSERT_POS=after_smear \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+logs/m34_12L384_6h_attnlite_passthrough_222.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:17233609
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+world_size:1 grad_accum_steps:8
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:6 num_kv_heads:2
+tie_embeddings:True embed_lr:0.05 head_lr:0.0 matrix_lr:0.04 scalar_lr:0.04
+train_batch_tokens:393216 train_seq_len:2048 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+^CW0329 00:07:58.626000 547 torch/distributed/elastic/agent/server/api.py:725] Received 2 death signal, shutting down workers
+W0329 00:07:58.630000 547 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 615 closing signal SIGINT
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34_multi_hash_gated/train_gpt.py", line 1762, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34_multi_hash_gated/train_gpt.py", line 1486, in main
+[rank0]:     warmup_loss = model(x, y)
+[rank0]:                   ^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/parallel/distributed.py", line 1661, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/parallel/distributed.py", line 1487, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py", line 414, in __call__
+[rank0]:     return super().__call__(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py", line 832, in compile_wrapper
+[rank0]:     return fn(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34_multi_hash_gated/train_gpt.py", line 992, in forward
+[rank0]:     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py", line 414, in __call__
+[rank0]:     return super().__call__(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py", line 1044, in _fn
+[rank0]:     return fn(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/fx/graph_module.py", line 837, in call_wrapped
+[rank0]:     return self._wrapped_call(self, *args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/fx/graph_module.py", line 400, in __call__
+[rank0]:     return super(self.cls, obj).__call__(*args, **kwargs)  # type: ignore[misc]
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "<eval_with_key>.369", line 203, in forward
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/backends/distributed.py", line 213, in forward
+[rank0]:     x = self.submod(*args)
+[rank0]:         ^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py", line 1044, in _fn
+[rank0]:     return fn(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/aot_autograd.py", line 1130, in forward
+[rank0]:     return compiled_fn(full_args)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 339, in runtime_wrapper
+[rank0]:     all_outs = call_func_at_runtime_with_args(
+[rank0]:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/utils.py", line 129, in call_func_at_runtime_with_args
+[rank0]:     out = normalize_as_list(f(args))
+[rank0]:                             ^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/utils.py", line 103, in g
+[rank0]:     return f(*args)
+[rank0]:            ^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py", line 581, in apply
+[rank0]:     return super().apply(*args, **kwargs)  # type: ignore[misc]
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 2118, in forward
+[rank0]:     fw_outs = call_func_at_runtime_with_args(
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/utils.py", line 129, in call_func_at_runtime_with_args
+[rank0]:     out = normalize_as_list(f(args))
+[rank0]:                             ^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 629, in wrapper
+[rank0]:     return compiled_fn(runtime_args)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 526, in wrapper
+[rank0]:     return compiled_fn(runtime_args)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 724, in inner_fn
+[rank0]:     outs = compiled_fn(args)
+[rank0]:            ^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py", line 613, in __call__
+[rank0]:     return self.current_callable(inputs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/utils.py", line 3017, in run
+[rank0]:     out = model(new_inputs)
+[rank0]:           ^^^^^^^^^^^^^^^^^
+[rank0]:   File "/tmp/torchinductor_root/yu/cyu6wwgc2erj5g6mkdwjpalwihxlvf22thbb4cxq77ufbbm2e2yr.py", line 2055, in call
+[rank0]:     triton_per_fused__to_copy__unsafe_view_add_cat_mean_mul_neg_pow_rsqrt_slice_view_6.run(buf150, buf144, primals_65, primals_66, buf152, 98304, 64, stream=stream0)
+[rank0]:   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/runtime/triton_heuristics.py", line 1274, in run
+[rank0]:     if not getattr(
+[rank0]:            ^^^^^^^^
+[rank0]: KeyboardInterrupt
+[rank0]:[W329 00:08:00.649033772 ProcessGroupNCCL.cpp:1524] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+cd /workspace/parameter-golf-base/experiments/m34_multi_hash_gated
+RUN_ID=m34_12L384_6h_attnlite_passthrough_222 \
+DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+NUM_LAYERS=12 \
+MODEL_DIM=384 \
+NUM_HEADS=6 \
+NUM_KV_HEADS=2 \
+MLP_MULT=3.0 \
+TRAIN_SEQ_LEN=2048 \
+EVAL_SEQ_LEN=2048 \
+TRAIN_BATCH_TOKENS=393216 \
+VAL_BATCH_SIZE=262144 \
+VAL_LOSS_EVERY=0 \
+TRAIN_LOG_EVERY=25 \
+MAX_WALLCLOCK_SECONDS=600 \
+BIGRAM_DIM=96 \
+NGRAM_ORDERS=2,3,4 \
+NGRAM_VOCAB_SIZES=9192,4096,2048 \
+NGRAM_NUM_HASHES=2,2,2 \
+NGRAM_MIX_MODE=attn_lite \
+NGRAM_INSERT_POS=after_smear \
+torchrun --standalone --nproc_per_node=1 train_gpt.pyTraceback (most recent call last):
+  File "/usr/local/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 284, in launch_agent
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/agent/server/api.py", line 717, in run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/agent/server/api.py", line 881, in _invoke_run
+    time.sleep(monitor_interval)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/api.py", line 85, in _terminate_process_handler
+    raise SignalException(f"Process {os.getpid()} got signal: {sigval}", sigval=sigval)
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 547 got signal: 2
+
+root@4f3c2a4a8714:/workspace/parameter-golf-base/experiments/m34_multi_hash_gated# cd /workspace/parameter-golf-base/experiments/m34_multi_hash_gated
+root@4f3c2a4a8714:/workspace/parameter-golf-base/experiments/m34_multi_hash_gated# RUN_ID=m34_12L384_6h_attnlite_passthrough_222 \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> VOCAB_SIZE=1024 \
+> NUM_LAYERS=12 \
+> MODEL_DIM=384 \
+> NUM_HEADS=6 \
+> NUM_KV_HEADS=2 \
+> MLP_MULT=3.0 \
+> TRAIN_SEQ_LEN=2048 \
+> EVAL_SEQ_LEN=2048 \
+> TRAIN_BATCH_TOKENS=393216 \
+> VAL_BATCH_SIZE=262144 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> BIGRAM_DIM=96 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=9192,4096,2048 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_MIX_MODE=attn_lite \
+> NGRAM_INSERT_POS=after_smear \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+logs/m34_12L384_6h_attnlite_passthrough_222.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:18801865
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+world_size:1 grad_accum_steps:8
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:6 num_kv_heads:2
+tie_embeddings:True embed_lr:0.05 head_lr:0.0 matrix_lr:0.04 scalar_lr:0.04
+train_batch_tokens:393216 train_seq_len:2048 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9285 train_time:559ms step_avg:558.87ms
+step:2/20000 train_loss:8.2453 train_time:1106ms step_avg:553.08ms
+step:3/20000 train_loss:7.5016 train_time:1698ms step_avg:565.85ms
+step:4/20000 train_loss:7.3348 train_time:2243ms step_avg:560.85ms
+step:5/20000 train_loss:7.0812 train_time:2790ms step_avg:557.93ms
+step:6/20000 train_loss:6.6960 train_time:3293ms step_avg:548.84ms
+step:7/20000 train_loss:6.8731 train_time:3793ms step_avg:541.82ms
+step:8/20000 train_loss:6.7242 train_time:4291ms step_avg:536.39ms
+step:9/20000 train_loss:6.5520 train_time:4788ms step_avg:532.05ms
+step:10/20000 train_loss:6.2966 train_time:5324ms step_avg:532.37ms
+step:25/20000 train_loss:4.4700 train_time:12489ms step_avg:499.56ms
+step:50/20000 train_loss:3.5623 train_time:24716ms step_avg:494.32ms
+step:75/20000 train_loss:3.3443 train_time:37596ms step_avg:501.28ms
+step:100/20000 train_loss:3.2577 train_time:50943ms step_avg:509.43ms
+step:125/20000 train_loss:3.0779 train_time:63810ms step_avg:510.48ms
+step:150/20000 train_loss:2.9619 train_time:75888ms step_avg:505.92ms
+step:175/20000 train_loss:2.9442 train_time:88805ms step_avg:507.46ms
+step:200/20000 train_loss:2.8659 train_time:102145ms step_avg:510.72ms
+step:225/20000 train_loss:2.7526 train_time:115396ms step_avg:512.87ms
+step:250/20000 train_loss:2.7573 train_time:127688ms step_avg:510.75ms
+step:275/20000 train_loss:2.6338 train_time:137304ms step_avg:499.29ms
+step:300/20000 train_loss:2.6527 train_time:149896ms step_avg:499.65ms
+step:325/20000 train_loss:2.6013 train_time:162510ms step_avg:500.03ms
+step:350/20000 train_loss:2.6195 train_time:176013ms step_avg:502.90ms
+step:375/20000 train_loss:2.4976 train_time:189079ms step_avg:504.21ms
+step:400/20000 train_loss:2.5288 train_time:201030ms step_avg:502.57ms
+step:425/20000 train_loss:2.4824 train_time:214109ms step_avg:503.79ms
+step:450/20000 train_loss:2.4650 train_time:227093ms step_avg:504.65ms
+step:475/20000 train_loss:2.4733 train_time:240433ms step_avg:506.17ms
+step:500/20000 train_loss:2.5033 train_time:252988ms step_avg:505.98ms
+step:525/20000 train_loss:2.4357 train_time:265518ms step_avg:505.75ms
+step:550/20000 train_loss:2.4945 train_time:278697ms step_avg:506.72ms
+step:575/20000 train_loss:2.4450 train_time:291988ms step_avg:507.81ms
+swa:start step:600
+step:600/20000 train_loss:2.3992 train_time:304588ms step_avg:507.65ms
+step:625/20000 train_loss:2.4431 train_time:316807ms step_avg:506.89ms
+step:650/20000 train_loss:2.3831 train_time:330214ms step_avg:508.02ms
+step:675/20000 train_loss:2.3883 train_time:343931ms step_avg:509.53ms
+step:700/20000 train_loss:2.4384 train_time:356803ms step_avg:509.72ms
+step:725/20000 train_loss:2.3733 train_time:369395ms step_avg:509.51ms
+step:750/20000 train_loss:2.3417 train_time:382323ms step_avg:509.76ms
+step:775/20000 train_loss:2.4625 train_time:395895ms step_avg:510.83ms
+step:800/20000 train_loss:2.3776 train_time:408902ms step_avg:511.13ms
+step:825/20000 train_loss:2.3286 train_time:422293ms step_avg:511.87ms
+step:850/20000 train_loss:2.3743 train_time:434920ms step_avg:511.67ms
+step:875/20000 train_loss:2.2607 train_time:447309ms step_avg:511.21ms
+step:900/20000 train_loss:2.1858 train_time:460106ms step_avg:511.23ms
+step:925/20000 train_loss:2.3243 train_time:473601ms step_avg:512.00ms
+step:950/20000 train_loss:2.2582 train_time:486479ms step_avg:512.08ms
+step:975/20000 train_loss:2.3267 train_time:498712ms step_avg:511.50ms
+step:1000/20000 train_loss:2.2467 train_time:511796ms step_avg:511.80ms
+step:1025/20000 train_loss:2.2533 train_time:524316ms step_avg:511.53ms
+step:1050/20000 train_loss:2.2754 train_time:537087ms step_avg:511.51ms
+step:1075/20000 train_loss:2.1611 train_time:549311ms step_avg:510.99ms
+step:1100/20000 train_loss:2.3262 train_time:560890ms step_avg:509.90ms
+step:1125/20000 train_loss:2.1806 train_time:572920ms step_avg:509.26ms
+step:1150/20000 train_loss:2.2519 train_time:585398ms step_avg:509.04ms
+step:1175/20000 train_loss:2.2328 train_time:595917ms step_avg:507.16ms
+step:1183/20000 val_loss:2.2455 val_bpb:1.3299 train_time:600101ms step_avg:507.27ms
+stopping_early: wallclock_cap train_time:600101ms step:1183/20000
+peak memory allocated: 8431 MiB reserved: 8560 MiB
+swa:applying averaged 3 checkpoints
+Serialized model: 68573467 bytes
+Code size: 76458 bytes
+Serialized model int6+zlib: 12787424 bytes
+Total submission size int6+zlib: 12863882 bytes
+final_int6_roundtrip val_loss:2.3172 val_bpb:1.3724 eval_time:46441ms
+final_int6_roundtrip_exact val_loss:2.31716530 val_bpb:1.37235581
