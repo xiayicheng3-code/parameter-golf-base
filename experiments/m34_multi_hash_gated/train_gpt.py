@@ -74,6 +74,9 @@ class Hyperparameters:
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
     max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+    # By default we preserve the old "effective batch = 8 global microbatches" behavior,
+    # but allow explicit overrides so throughput comparisons can use true single-step batches.
+    grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
 
     # Model shape.
@@ -292,6 +295,7 @@ def eval_val(
     val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     val_token_count = torch.zeros((), device=device, dtype=torch.float64)
     val_byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    use_ngram_inputs = candidate_model is not None and getattr(candidate_model, "bigram", None) is not None
 
     model.eval()
     with torch.inference_mode():
@@ -299,14 +303,20 @@ def eval_val(
             batch_seq_end = min(batch_seq_start + local_batch_seqs, seq_end)
             raw_start = batch_seq_start * seq_len
             raw_end = batch_seq_end * seq_len + 1
-            local = val_tokens[raw_start:raw_end].to(dtype=torch.int64)
-            x_cpu = local[:-1].reshape(-1, seq_len)
-            y_cpu = local[1:].reshape(-1, seq_len)
-            x, y, candidate_ids = prepare_ngram_inputs(
-                candidate_model, x_cpu, y_cpu, args.ngram_candidate_source, device
-            )
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                batch_loss = model(x, y, candidate_ids).detach()
+                if use_ngram_inputs:
+                    local = val_tokens[raw_start:raw_end].to(dtype=torch.int64)
+                    x_cpu = local[:-1].reshape(-1, seq_len)
+                    y_cpu = local[1:].reshape(-1, seq_len)
+                    x, y, candidate_ids = prepare_ngram_inputs(
+                        candidate_model, x_cpu, y_cpu, args.ngram_candidate_source, device
+                    )
+                    batch_loss = model(x, y, candidate_ids).detach()
+                else:
+                    local = val_tokens[raw_start:raw_end].to(device=device, dtype=torch.int64, non_blocking=True)
+                    x = local[:-1].reshape(-1, seq_len)
+                    y = local[1:].reshape(-1, seq_len)
+                    batch_loss = model(x, y).detach()
             batch_token_count = float(y.numel())
             val_loss_sum += batch_loss.to(torch.float64) * batch_token_count
             val_token_count += batch_token_count
@@ -1156,6 +1166,7 @@ def eval_val_sliding(
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    use_ngram_inputs = getattr(base_model, "bigram", None) is not None
 
     base_model.eval()
     compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
@@ -1173,16 +1184,29 @@ def eval_val_sliding(
                 end = min(ws + seq_len, total_tokens)
                 wlen = end - ws
                 wlens.append(wlen)
-                chunk = val_tokens[ws:end + 1].to(dtype=torch.int64)
-                x_batch_cpu[i, :wlen] = chunk[:-1]
-                y_batch_cpu[i, :wlen] = chunk[1:]
-
-            x_batch, y_batch, candidate_ids = prepare_ngram_inputs(
-                base_model, x_batch_cpu, y_batch_cpu, args.ngram_candidate_source, device
-            )
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                logits = compiled_logits(x_batch, candidate_ids)
+                if use_ngram_inputs:
+                    for i, ws in enumerate(batch_ws):
+                        end = min(ws + seq_len, total_tokens)
+                        wlen = end - ws
+                        chunk = val_tokens[ws:end + 1].to(dtype=torch.int64)
+                        x_batch_cpu[i, :wlen] = chunk[:-1]
+                        y_batch_cpu[i, :wlen] = chunk[1:]
+                    x_batch, y_batch, candidate_ids = prepare_ngram_inputs(
+                        base_model, x_batch_cpu, y_batch_cpu, args.ngram_candidate_source, device
+                    )
+                    logits = compiled_logits(x_batch, candidate_ids)
+                else:
+                    x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                    y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                    for i, ws in enumerate(batch_ws):
+                        end = min(ws + seq_len, total_tokens)
+                        wlen = end - ws
+                        chunk = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
+                        x_batch[i, :wlen] = chunk[:-1]
+                        y_batch[i, :wlen] = chunk[1:]
+                    logits = compiled_logits(x_batch)
 
             nll = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)).float(),
@@ -1315,9 +1339,19 @@ def main() -> None:
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if world_size <= 0:
         raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
-    if 8 % world_size != 0:
-        raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so grad_accum_steps stays integral")
-    grad_accum_steps = 8 // world_size
+    if args.grad_accum_steps > 0:
+        grad_accum_steps = args.grad_accum_steps
+    else:
+        if 8 % world_size != 0:
+            raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so default grad_accum_steps stays integral")
+        grad_accum_steps = 8 // world_size
+    if grad_accum_steps <= 0:
+        raise ValueError(f"GRAD_ACCUM_STEPS must be positive, got {grad_accum_steps}")
+    if args.train_batch_tokens % (world_size * grad_accum_steps) != 0:
+        raise ValueError(
+            f"TRAIN_BATCH_TOKENS={args.train_batch_tokens} must be divisible by "
+            f"WORLD_SIZE*GRAD_ACCUM_STEPS={world_size * grad_accum_steps}"
+        )
     grad_scale = 1.0 / grad_accum_steps
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
@@ -1505,6 +1539,7 @@ def main() -> None:
 
     n_params = sum(p.numel() for p in base_model.parameters())
     mtp_params = sum(p.numel() for p in base_model.mtp_heads.parameters())
+    micro_batch_tokens = args.train_batch_tokens // grad_accum_steps
     log0(f"model_params:{n_params}")
     log0(f"mtp_num_heads:{args.mtp_num_heads} mtp_loss_weight:{args.mtp_loss_weight} mtp_params:{mtp_params}")
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
@@ -1517,6 +1552,7 @@ def main() -> None:
     )
     log0(
         f"train_batch_tokens:{args.train_batch_tokens} train_seq_len:{args.train_seq_len} "
+        f"micro_batch_tokens:{micro_batch_tokens} "
         f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
@@ -1528,6 +1564,7 @@ def main() -> None:
     # -----------------------------
 
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+    use_ngram_inputs = base_model.bigram is not None
 
     def zero_grad_all() -> None:
         for opt in optimizers:
@@ -1557,17 +1594,21 @@ def main() -> None:
             for micro_step in range(grad_accum_steps):
                 if distributed:
                     model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-                x_raw, y_raw = train_loader.next_batch(
-                    args.train_batch_tokens,
-                    args.train_seq_len,
-                    grad_accum_steps,
-                    to_device=args.ngram_candidate_source != "cpu",
-                )
-                x, y, candidate_ids = prepare_ngram_inputs(
-                    base_model, x_raw, y_raw, args.ngram_candidate_source, device
-                )
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                    warmup_loss = model(x, y, candidate_ids)
+                    if use_ngram_inputs:
+                        x_raw, y_raw = train_loader.next_batch(
+                            args.train_batch_tokens,
+                            args.train_seq_len,
+                            grad_accum_steps,
+                            to_device=args.ngram_candidate_source != "cpu",
+                        )
+                        x, y, candidate_ids = prepare_ngram_inputs(
+                            base_model, x_raw, y_raw, args.ngram_candidate_source, device
+                        )
+                        warmup_loss = model(x, y, candidate_ids)
+                    else:
+                        x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+                        warmup_loss = model(x, y)
                 (warmup_loss * grad_scale).backward()
             for opt in optimizers:
                 opt.step()
@@ -1645,17 +1686,21 @@ def main() -> None:
         for micro_step in range(grad_accum_steps):
             if distributed:
                 model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-            x_raw, y_raw = train_loader.next_batch(
-                args.train_batch_tokens,
-                args.train_seq_len,
-                grad_accum_steps,
-                to_device=args.ngram_candidate_source != "cpu",
-            )
-            x, y, candidate_ids = prepare_ngram_inputs(
-                base_model, x_raw, y_raw, args.ngram_candidate_source, device
-            )
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                loss = model(x, y, candidate_ids)
+                if use_ngram_inputs:
+                    x_raw, y_raw = train_loader.next_batch(
+                        args.train_batch_tokens,
+                        args.train_seq_len,
+                        grad_accum_steps,
+                        to_device=args.ngram_candidate_source != "cpu",
+                    )
+                    x, y, candidate_ids = prepare_ngram_inputs(
+                        base_model, x_raw, y_raw, args.ngram_candidate_source, device
+                    )
+                    loss = model(x, y, candidate_ids)
+                else:
+                    x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+                    loss = model(x, y)
             train_loss += loss.detach()
             (loss * grad_scale).backward()
         train_loss /= grad_accum_steps

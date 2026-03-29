@@ -31,83 +31,81 @@ activation.
 
 ## Chosen Prototype
 
-Use elementwise candidate-content logits:
+Match the current `attn_lite` math directly:
 
 ```text
-logit_i = q * v_i + b_i
-```
-
-Then compute a streaming softmax across candidate slots for each token and
-feature dimension:
-
-```text
-m = max_i logit_i
-den = sum_i exp(logit_i - m)
-out_num = sum_i exp(logit_i - m) * v_i
-out = out_num / den
+score_i = (q · k_i) / sqrt(d_attn) + b_i
+alpha = softmax(score over candidate slots)
+out = sum_i alpha_i * v_i
 ```
 
 Where:
 
-- `q` is a token-conditioned query vector in the same dimension as the candidate
-  embedding
-- `v_i` is the candidate embedding for candidate `i`
+- `q` is a token-conditioned query vector
+- `k_i` is the candidate key for candidate `i`
+- `v_i` is the candidate value embedding for candidate `i`
 - `b_i` is an optional learned per-slot bias
 
-This preserves content-aware filtering while remaining compatible with a
-single-read streaming kernel. It is not standard qk-attention, but it is still a
-softmax-normalized content-sensitive fusion operator.
+The prototype therefore uses separate key and value tables:
+
+- `key_weight`: `[V, d_attn]`
+- `value_weight`: `[V, d_value]`
+
+This matches the core attention reduction in `train_gpt.py`. The pass-through
+gate that follows `attn_lite` remains outside the fused operator.
 
 ## Why This Is Single-Read Friendly
 
-For each candidate `v_i`, the kernel can:
+For each candidate `(k_i, v_i)`, the kernel can:
 
-1. load `v_i`
-2. compute `logit_i = q * v_i + b_i`
+1. load `k_i` and compute the scalar score `q · k_i`
+2. load the needed tile of `v_i`
 3. update running max / running denominator
 4. update running weighted output numerator
-5. discard `v_i`
+5. discard this candidate
 
-No second candidate-value read is required by the math, as long as the operator
+No intermediate score matrix needs to be materialized in HBM, and no separate
+"softmax pass" over candidate scores is required, as long as the operator
 maintains online softmax state inside the kernel.
 
 ## Tensor Shapes
 
 The prototype API uses flattened token shape:
 
-- `q`: `[N, D]`
+- `q`: `[N, A]`
 - `candidate_ids`: `[N, K]`
-- `embed_weight`: `[V, D]`
+- `key_weight`: `[V, A]`
+- `value_weight`: `[V, D]`
 - `slot_bias`: `[K]` optional
 - output: `[N, D]`
 
 Where:
 
 - `N = batch * seq_len`
+- `A = attn_dim`
 - `D = ngram_dim`
 - `K = total_candidates`
 - `V = total rows in the unified candidate embedding table`
 
 ## Kernel Strategy
 
-One Triton program handles a tile of tokens and a tile of embedding dimensions.
+One Triton program handles a tile of tokens and a tile of value dimensions.
 For each candidate slot:
 
 - load candidate ids for the token tile
-- gather candidate embedding tile
-- load query tile
-- compute logits `q * v + bias`
-- update running softmax max
+- gather the candidate key and compute the scalar attention score `q · k_i`
+- gather the candidate value tile
+- update running softmax max / denominator
 - rescale previous accumulators
-- update denominator and weighted numerator
+- update the weighted output numerator
 
 At the end:
 
 - write `out_num / out_den`
 
-This is the same systems intuition as FlashAttention: keep normalization and
-weighted accumulation in one streaming loop instead of separating score and value
-passes in global memory.
+This is the same systems intuition as FlashAttention: keep score computation,
+normalization, and weighted accumulation in one streaming loop instead of
+separating them into multiple global-memory passes.
 
 ## Prototype Scope
 
@@ -118,16 +116,16 @@ The prototype is intentionally limited:
 - no attempt yet to fuse hash generation
 - no attempt yet to integrate directly into `train_gpt.py`
 
-This keeps the prototype honest while still letting us test whether a
-single-read softmax fusion operator is worth a full custom kernel.
+This keeps the prototype honest while still letting us test whether a true
+candidate-level attention fusion operator is worth a full custom kernel.
 
 ## Open Questions
 
-- whether elementwise softmax-normalized candidate filtering keeps the same
-  step-wise learning benefit as the original attention-style filter
+- whether a separate learned key table is better than deriving keys from the
+  value embedding table at runtime
 - whether slot bias alone is enough, or whether order/hash metadata should also
   modulate the logits
-- whether logits should remain purely `q * v + b`, or whether an extra per-slot
-  scale is worth the complexity
+- whether the key path should stay purely `q · k + b`, or whether a lightweight
+  per-slot scale is worth the complexity
 - whether the forward-only Triton speedup is already enough to justify a full
   backward kernel
