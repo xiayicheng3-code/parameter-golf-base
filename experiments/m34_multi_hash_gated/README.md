@@ -9,7 +9,7 @@ Current mixing modes:
 - `single`: compatibility mode matching the old single-candidate behavior
 - `mean`: simple flat averaging over all n-gram hash candidates
 - `scalar_gate`: context-conditioned scalar mixing over hash candidates
-- `attn_lite`: tiny query-key selection over hash candidates, then gated mixing of `skip`, `mean`, and `attn`
+- `attn_lite`: tiny query-key selection over hash candidates, followed by an `[x; attn_out]` pass-through gate
 
 Hypothesis:
 
@@ -36,7 +36,7 @@ TRAIN_LOG_EVERY=5 \
 BIGRAM_DIM=128 \
 NGRAM_ORDERS=2,3,4 \
 NGRAM_VOCAB_SIZES=4096,2048,1024 \
-NGRAM_NUM_HASHES=4,4,2 \
+NGRAM_NUM_HASHES=2,2,2 \
 NGRAM_MIX_MODE=scalar_gate \
 NGRAM_INSERT_POS=after_smear \
 python3 train_gpt.py
@@ -45,6 +45,6 @@ python3 train_gpt.py
 Suggested comparison ladder:
 
 1. `NGRAM_ORDERS=2 NGRAM_VOCAB_SIZES=4096 NGRAM_NUM_HASHES=1 NGRAM_MIX_MODE=single`
-2. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=4,4,2 NGRAM_MIX_MODE=mean`
-3. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=4,4,2 NGRAM_MIX_MODE=scalar_gate`
-4. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=4,4,2 NGRAM_MIX_MODE=attn_lite`
+2. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=2,2,2 NGRAM_MIX_MODE=mean`
+3. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=2,2,2 NGRAM_MIX_MODE=scalar_gate`
+4. `NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=4096,2048,1024 NGRAM_NUM_HASHES=2,2,2 NGRAM_MIX_MODE=attn_lite`

@@ -1,0 +1,239 @@
+ _____                             _
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |
+                  |_|
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@ae61f66eca8c:/workspace/parameter-golf# cd /workspace
+root@ae61f66eca8c:/workspace# git clone https://github.com/xiayicheng3-code/parameter-golf-base.git || true
+Cloning into 'parameter-golf-base'...
+remote: Enumerating objects: 867, done.
+remote: Counting objects: 100% (9/9), done.
+remote: Compressing objects: 100% (6/6), done.
+Receiving objects:  14% (122/867)
+remote: Total 867 (delta 3), reused 5 (delta 3), pack-reused 858 (from 2)
+Receiving objects: 100% (867/867), 2.24 MiB | 5.10 MiB/s, done.
+Resolving deltas: 100% (436/436), done.
+root@ae61f66eca8c:/workspace# cd /workspace/parameter-golf-base
+root@ae61f66eca8c:/workspace/parameter-golf-base# git fetch origin
+root@ae61f66eca8c:/workspace/parameter-golf-base# git pull --ff-only
+Already up to date.
+root@ae61f66eca8c:/workspace/parameter-golf-base#
+root@ae61f66eca8c:/workspace/parameter-golf-base# python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and fasterdownloads.
+manifest.json: 1.93kB [00:00, 4.93MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 124M/124M [00:01<00:00, 102MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 165MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 142MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 165MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 200M/200M [00:01<00:00, 140MB/s]
+datasets/tokenizers/fineweb_1024_bpe.mod(…): 100%|███████████████████████████████████████████| 254k/254k [00:00<00:00, 599kB/s]
+fineweb_1024_bpe.vocab: 9.86kB [00:00, 8.84MB/s]
+root@ae61f66eca8c:/workspace/parameter-golf-base#
+root@ae61f66eca8c:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34_multi_hash_gated
+root@ae61f66eca8c:/workspace/parameter-golf-base/experiments/m34_multi_hash_gated# RUN_ID=m34_12L384_6h_attnlite_aftersmear \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> VOCAB_SIZE=1024 \
+> NUM_LAYERS=12 \
+> MODEL_DIM=384 \
+> NUM_HEADS=6 \
+> NUM_KV_HEADS=2 \
+> MLP_MULT=3.0 \
+> TRAIN_SEQ_LEN=2048 \
+> EVAL_SEQ_LEN=2048 \
+> TRAIN_BATCH_TOKENS=393216 \
+> VAL_BATCH_SIZE=262144 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> BIGRAM_DIM=96 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=4096,2048,1024 \
+> NGRAM_NUM_HASHES=4,4,2 \
+> NGRAM_MIX_MODE=attn_lite \
+> NGRAM_INSERT_POS=after_smear \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+logs/m34_12L384_6h_attnlite_aftersmear.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:18395689
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+world_size:1 grad_accum_steps:8
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:6 num_kv_heads:2
+tie_embeddings:True embed_lr:0.05 head_lr:0.0 matrix_lr:0.04 scalar_lr:0.04
+train_batch_tokens:393216 train_seq_len:2048 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9303 train_time:735ms step_avg:734.80ms
+step:2/20000 train_loss:8.4255 train_time:1359ms step_avg:679.47ms
+step:3/20000 train_loss:7.6073 train_time:1978ms step_avg:659.38ms
+step:4/20000 train_loss:7.0270 train_time:2606ms step_avg:651.55ms
+step:5/20000 train_loss:6.8948 train_time:3252ms step_avg:650.30ms
+step:6/20000 train_loss:6.8630 train_time:3868ms step_avg:644.66ms
+step:7/20000 train_loss:7.0439 train_time:4486ms step_avg:640.92ms
+step:8/20000 train_loss:6.6928 train_time:5112ms step_avg:639.03ms
+step:9/20000 train_loss:6.3475 train_time:5735ms step_avg:637.25ms
+step:10/20000 train_loss:6.1736 train_time:6284ms step_avg:628.38ms
+step:25/20000 train_loss:4.4751 train_time:15683ms step_avg:627.32ms
+step:50/20000 train_loss:3.6070 train_time:28685ms step_avg:573.71ms
+step:75/20000 train_loss:3.3451 train_time:42713ms step_avg:569.51ms
+step:100/20000 train_loss:3.2551 train_time:57583ms step_avg:575.83ms
+step:125/20000 train_loss:3.1023 train_time:72291ms step_avg:578.33ms
+step:150/20000 train_loss:2.9696 train_time:85877ms step_avg:572.51ms
+step:175/20000 train_loss:2.9467 train_time:99806ms step_avg:570.32ms
+step:200/20000 train_loss:2.8656 train_time:114584ms step_avg:572.92ms
+step:225/20000 train_loss:2.7494 train_time:129070ms step_avg:573.65ms
+step:250/20000 train_loss:2.7526 train_time:141462ms step_avg:565.85ms
+step:275/20000 train_loss:2.6255 train_time:155353ms step_avg:564.92ms
+step:300/20000 train_loss:2.6467 train_time:168069ms step_avg:560.23ms
+step:325/20000 train_loss:2.5975 train_time:180469ms step_avg:555.29ms
+step:350/20000 train_loss:2.6119 train_time:193334ms step_avg:552.38ms
+step:375/20000 train_loss:2.4901 train_time:205571ms step_avg:548.19ms
+step:400/20000 train_loss:2.5215 train_time:218391ms step_avg:545.98ms
+step:425/20000 train_loss:2.4716 train_time:232371ms step_avg:546.76ms
+step:450/20000 train_loss:2.4530 train_time:244981ms step_avg:544.40ms
+step:475/20000 train_loss:2.4638 train_time:257793ms step_avg:542.72ms
+step:500/20000 train_loss:2.4921 train_time:269960ms step_avg:539.92ms
+step:525/20000 train_loss:2.4231 train_time:284479ms step_avg:541.87ms
+step:550/20000 train_loss:2.4836 train_time:297878ms step_avg:541.60ms
+step:575/20000 train_loss:2.4323 train_time:311164ms step_avg:541.15ms
+swa:start step:600
+step:600/20000 train_loss:2.3866 train_time:324260ms step_avg:540.43ms
+step:625/20000 train_loss:2.4301 train_time:337783ms step_avg:540.45ms
+step:650/20000 train_loss:2.3661 train_time:352870ms step_avg:542.88ms
+step:675/20000 train_loss:2.3758 train_time:365678ms step_avg:541.75ms
+step:700/20000 train_loss:2.4225 train_time:378158ms step_avg:540.23ms
+step:725/20000 train_loss:2.3580 train_time:390352ms step_avg:538.42ms
+step:750/20000 train_loss:2.3297 train_time:402977ms step_avg:537.30ms
+step:775/20000 train_loss:2.4493 train_time:418118ms step_avg:539.51ms
+step:800/20000 train_loss:2.3636 train_time:432869ms step_avg:541.09ms
+step:825/20000 train_loss:2.3151 train_time:445253ms step_avg:539.70ms
+step:850/20000 train_loss:2.3591 train_time:459185ms step_avg:540.22ms
+step:875/20000 train_loss:2.2460 train_time:473763ms step_avg:541.44ms
+step:900/20000 train_loss:2.1719 train_time:488464ms step_avg:542.74ms
+step:925/20000 train_loss:2.3093 train_time:503305ms step_avg:544.11ms
+step:950/20000 train_loss:2.2428 train_time:517459ms step_avg:544.69ms
+step:975/20000 train_loss:2.3123 train_time:532773ms step_avg:546.43ms
+step:1000/20000 train_loss:2.2302 train_time:547491ms step_avg:547.49ms
+step:1025/20000 train_loss:2.2372 train_time:560167ms step_avg:546.50ms
+step:1050/20000 train_loss:2.2608 train_time:572690ms step_avg:545.42ms
+step:1075/20000 train_loss:2.1503 train_time:585368ms step_avg:544.53ms
+step:1100/20000 train_loss:2.3153 train_time:598759ms step_avg:544.33ms
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+step:1103/20000 val_loss:2.2453 val_bpb:1.3298 train_time:600266ms step_avg:544.21ms
+stopping_early: wallclock_cap train_time:600266ms step:1103/20000
+peak memory allocated: 8488 MiB reserved: 8860 MiB
+swa:applying averaged 3 checkpoints
+Serialized model: 67725979 bytes
+Code size: 76508 bytes
+Serialized model int6+zlib: 12123407 bytes
+Total submission size int6+zlib: 12199915 bytes
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+final_int6_roundtrip val_loss:2.3088 val_bpb:1.3674 eval_time:44538ms
+final_int6_roundtrip_exact val_loss:2.30881813 val_bpb:1.36741215
+/usr/local/lib/python3.12/dist-packages/torch/_inductor/lowering.py:7242: UserWarning:
+Online softmax is disabled on the fly since Inductor decides to
+split the reduction. Cut an issue to PyTorch if this is an
+important use case and you want to speed it up with online
+softmax.
+
+  warnings.warn(
+
+  warnings.warn(
+final_int6_sliding_window val_loss:2.2727 val_bpb:1.3460 stride:64 eval_time:464606ms
+final_int6_sliding_window_exact val_loss:2.27268035 val_bpb:1.34601288
