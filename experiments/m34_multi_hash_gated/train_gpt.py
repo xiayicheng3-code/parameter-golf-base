@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import uuid
+import warnings
 import zlib
 from pathlib import Path
 
@@ -115,6 +116,8 @@ class Hyperparameters:
     rope_dims = int(os.environ.get("ROPE_DIMS", 0))
     ln_scale = bool(int(os.environ.get("LN_SCALE", "0")))
     late_qat = bool(int(os.environ.get("LATE_QAT", "0")))
+    
+    # N-gram hashing and gating hyperparameters.
     bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 4096))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
     ngram_init_std = float(os.environ.get("NGRAM_INIT_STD", 0.005))
@@ -124,7 +127,8 @@ class Hyperparameters:
     ngram_orders = parse_int_csv_env("NGRAM_ORDERS", "2,3,4")
     ngram_vocab_sizes = parse_int_csv_env("NGRAM_VOCAB_SIZES", default_ngram_vocab_sizes)
     ngram_num_hashes = parse_int_csv_env("NGRAM_NUM_HASHES", "2,2,2")
-    ngram_mix_mode = os.environ.get("NGRAM_MIX_MODE", "single")
+    # Preferred current path: query-conditioned sigmoid gating over candidates.
+    ngram_mix_mode = os.environ.get("NGRAM_MIX_MODE", "sigmoid_qh")
     ngram_attn_dim = int(os.environ.get("NGRAM_ATTN_DIM", 32))
     ngram_insert_pos = os.environ.get("NGRAM_INSERT_POS", "before_smear")
     # Keep `inline` as the real training path for now. The `gpu_eager` and
@@ -723,7 +727,7 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
         ngram_dim: int,
         model_dim: int,
         num_hashes: list[int],
-        mix_mode: str = "single",
+        mix_mode: str = "sigmoid_qh",
         attn_dim: int = 32,
     ):
         super().__init__()
@@ -731,9 +735,17 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             raise ValueError("NGRAM_ORDERS, NGRAM_VOCAB_SIZES, and NGRAM_NUM_HASHES must have the same length")
         if not ngram_orders:
             raise ValueError("At least one n-gram order is required")
-        valid_mix_modes = {"single", "mean", "scalar_gate", "attn_lite"}
+        # Legacy modes are kept only so old ablations/logs remain reproducible.
+        valid_mix_modes = {"single", "mean", "scalar_gate", "attn_lite", "sigmoid_qh"}
+        deprecated_mix_modes = {"single", "mean", "scalar_gate", "attn_lite"}
         if mix_mode not in valid_mix_modes:
             raise ValueError(f"Unsupported ngram mix mode: {mix_mode}")
+        if mix_mode in deprecated_mix_modes:
+            warnings.warn(
+                f"NGRAM_MIX_MODE={mix_mode!r} is a deprecated legacy implementation. "
+                "Prefer 'sigmoid_qh' for current experiments.",
+                stacklevel=2,
+            )
         self.ngram_orders = list(ngram_orders)
         self.ngram_vocab_sizes = list(ngram_vocab_sizes)
         self.num_hashes = list(num_hashes)
@@ -776,11 +788,20 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             nn.init.zeros_(self.k_proj.weight)
             nn.init.zeros_(self.attn_gate_x_proj.weight)
             nn.init.zeros_(self.attn_gate.weight)
+            self.slot_gate_bias = None
+        elif mix_mode == "sigmoid_qh":
+            self.q_proj = CastedLinear(model_dim, ngram_dim, bias=False)
+            nn.init.zeros_(self.q_proj.weight)
+            self.k_proj = None
+            self.attn_gate_x_proj = None
+            self.attn_gate = None
+            self.slot_gate_bias = nn.Parameter(torch.full((self.total_candidates,), -2.0, dtype=torch.float32))
         else:
             self.q_proj = None
             self.k_proj = None
             self.attn_gate_x_proj = None
             self.attn_gate = None
+            self.slot_gate_bias = None
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
 
     def reset_near_zero_parameters(self, init_std: float) -> None:
@@ -791,8 +812,11 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             nn.init.normal_(self.gate.weight, mean=0.0, std=init_std)
         if self.q_proj is not None:
             nn.init.normal_(self.q_proj.weight, mean=0.0, std=init_std)
+        if self.k_proj is not None:
             nn.init.normal_(self.k_proj.weight, mean=0.0, std=init_std)
+        if self.attn_gate_x_proj is not None:
             nn.init.normal_(self.attn_gate_x_proj.weight, mean=0.0, std=init_std)
+        if self.attn_gate is not None:
             nn.init.normal_(self.attn_gate.weight, mean=0.0, std=init_std)
 
     def ngram_hash(self, tokens_i32: Tensor, order: int, vocab_size: int, num_hashes: int, group_offset: int) -> Tensor:
@@ -858,6 +882,11 @@ class MultiOrderFlatNgramEmbedding(nn.Module):
             gate_input = torch.cat((x_gate, h_gate), dim=-1)
             gate = torch.sigmoid(self.attn_gate(gate_input).to(dtype=h.dtype))
             h = gate * h
+        elif self.mix_mode == "sigmoid_qh":
+            q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
+            slot_bias = self.slot_gate_bias.to(dtype=h.dtype).view(*([1] * (h.ndim - 2)), self.total_candidates, 1)
+            gate = torch.sigmoid(q * h + slot_bias)
+            h = (gate * h).sum(dim=-2)
         if self.proj is not None:
             h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
@@ -931,7 +960,7 @@ class GPT(nn.Module):
         ngram_orders: list[int] | None = None,
         ngram_vocab_sizes: list[int] | None = None,
         ngram_num_hashes: list[int] | None = None,
-        ngram_mix_mode: str = "single",
+        ngram_mix_mode: str = "sigmoid_qh",
         ngram_attn_dim: int = 32,
         ngram_insert_pos: str = "before_smear",
         xsa_last_n: int = 0,
@@ -1486,6 +1515,8 @@ def main() -> None:
     tok_params = [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
     if base_model.bigram is not None:
         tok_params.append({"params": [base_model.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        if base_model.bigram.slot_gate_bias is not None:
+            scalar_params.append(base_model.bigram.slot_gate_bias)
         if base_model.bigram.proj is not None:
             matrix_params.append(base_model.bigram.proj.weight)
         if base_model.bigram.gate is not None:
