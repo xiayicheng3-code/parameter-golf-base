@@ -1064,22 +1064,33 @@ def eval_val_sliding(
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    index_template = torch.arange(seq_len + 1, dtype=torch.int64)
+    score_positions = torch.arange(seq_len, dtype=torch.int64)
     base_model.eval()
-    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    compiled_logits = getattr(base_model, "_compiled_forward_logits_cache", None)
+    if compiled_logits is None:
+        compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+        setattr(base_model, "_compiled_forward_logits_cache", compiled_logits)
     with torch.inference_mode():
         for bi in range(0, len(my_windows), batch_seqs):
             batch_ws = my_windows[bi:bi + batch_seqs]
             bsz = len(batch_ws)
-            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            wlens: list[int] = []
-            for i, ws in enumerate(batch_ws):
-                end = min(ws + seq_len, total_tokens)
-                wlen = end - ws
-                wlens.append(wlen)
-                chunk = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
-                x_batch[i, :wlen] = chunk[:-1]
-                y_batch[i, :wlen] = chunk[1:]
+            starts_cpu = torch.tensor(batch_ws, dtype=torch.int64)
+            wlens_cpu = (total_tokens - starts_cpu).clamp(max=seq_len)
+            batch_indices = starts_cpu[:, None] + index_template[None, :]
+            batch_indices.clamp_max_(total_tokens)
+            chunks_cpu = val_tokens[batch_indices]
+            x_batch = chunks_cpu[:, :-1].contiguous().to(device, non_blocking=True)
+            y_batch = chunks_cpu[:, 1:].contiguous().to(device, non_blocking=True)
+            score_from_cpu = torch.where(
+                starts_cpu == 0,
+                torch.zeros_like(wlens_cpu),
+                (wlens_cpu - stride).clamp(min=0),
+            )
+            score_mask = (
+                (score_positions[None, :] < wlens_cpu[:, None])
+                & (score_positions[None, :] >= score_from_cpu[:, None])
+            ).to(device, non_blocking=True)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 logits = compiled_logits(x_batch)
             nll = F.cross_entropy(
@@ -1087,17 +1098,14 @@ def eval_val_sliding(
                 y_batch.reshape(-1),
                 reduction="none",
             ).reshape(bsz, seq_len)
-            for i, ws in enumerate(batch_ws):
-                wlen = wlens[i]
-                s = 0 if ws == 0 else max(wlen - stride, 0)
-                scored_nll = nll[i, s:wlen].to(torch.float64)
-                loss_sum += scored_nll.sum()
-                token_count += float(wlen - s)
-                tgt = y_batch[i, s:wlen]
-                prev = x_batch[i, s:wlen]
-                tb = base_bytes_lut[tgt].to(torch.float64)
-                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
-                byte_count += tb.sum()
+            scored_nll = nll.masked_select(score_mask).to(torch.float64)
+            loss_sum += scored_nll.sum()
+            token_count += score_mask.sum().to(torch.float64)
+            tgt = y_batch.masked_select(score_mask)
+            prev = x_batch.masked_select(score_mask)
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
     if dist.is_available() and dist.is_initialized():
         dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(token_count, op=dist.ReduceOp.SUM)

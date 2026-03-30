@@ -3,11 +3,14 @@ from __future__ import annotations
 import copy
 import glob
 import io
+import json
 import math
 import os
 import random
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import zlib
@@ -24,18 +27,19 @@ import sentencepiece as spm
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import torch.multiprocessing as mp
+from huggingface_hub import hf_hub_download
 from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from flash_attn_interface import flash_attn_func as flash_attn_3_func
+try:
+    from flash_attn_interface import flash_attn_func as flash_attn_3_func
+except ImportError:
+    flash_attn_3_func = None
 
 
 def parse_int_csv(raw: str) -> list[int]:
     return [int(part.strip()) for part in raw.split(",") if part.strip()]
-
-
-def parse_int_csv_env(name: str, default: str) -> list[int]:
-    return parse_int_csv(os.environ.get(name, default))
 
 
 # -----------------------------
@@ -48,88 +52,148 @@ def parse_int_csv_env(name: str, default: str) -> list[int]:
 # - 524,288 train tokens per step for 20,000 iterations with a ~10 minute cap
 
 class Hyperparameters:
-    # Data paths are shard globs produced by the existing preprocessing pipeline.
-    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
-    train_files = os.path.join(data_path, "fineweb_train_*.bin")
-    val_files = os.path.join(data_path, "fineweb_val_*.bin")
-    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
-    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
-    seed = int(os.environ.get("SEED", 1337))
+    pass
 
-    # Validation cadence and batch size. Validation always uses the full fineweb_val split.
-    val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
-    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 1000))
-    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 200))
 
-    # Training length.
-    iterations = int(os.environ.get("ITERATIONS", 20000))
-    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 1200))
-    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
-    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
-    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
-    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
-    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
-    # By default we preserve the old "effective batch = 8 global microbatches" behavior,
-    # but allow explicit overrides so throughput comparisons can use true single-step batches.
-    grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
-    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
+MUON_TRAIN_DTYPE = torch.bfloat16
+CONTROL_TENSOR_NAME_PATTERNS = (
+    "attn_scale",
+    "attn_scales",
+    "mlp_scale",
+    "mlp_scales",
+    "resid_mix",
+    "resid_mixes",
+    "q_gain",
+    "skip_weight",
+    "skip_weights",
+    "smear",
+)
+INT8_KEEP_FLOAT_FP32_NAME_PATTERNS = CONTROL_TENSOR_NAME_PATTERNS
 
-    # Model shape.
-    vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
-    num_layers = int(os.environ.get("NUM_LAYERS", 9))
-    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
-    model_dim = int(os.environ.get("MODEL_DIM", 512))
-    num_heads = int(os.environ.get("NUM_HEADS", 8))
-    mlp_mult = float(os.environ.get("MLP_MULT", 3.0))
-    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
-    rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
-    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
 
-    # Optimizer hyperparameters.
-    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
-    head_lr = float(os.environ.get("HEAD_LR", 0.008))
-    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.05))
-    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
-    matrix_lr = float(os.environ.get("MATRIX_LR", 0.04))
-    scalar_lr = float(os.environ.get("SCALAR_LR", 0.04))
-    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.95))
-    muon_backend_steps = int(os.environ.get("MUON_BACKEND_STEPS", 5))
-    muon_momentum_warmup_start = float(os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.85))
-    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 500))
-    beta1 = float(os.environ.get("BETA1", 0.9))
-    beta2 = float(os.environ.get("BETA2", 0.95))
-    adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
-    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
-    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
-    mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
-    mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
-    muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
-    swa_enabled = bool(int(os.environ.get("SWA_ENABLED", "1")))
-    swa_every = int(os.environ.get("SWA_EVERY", 200))
-    muon_wd = float(os.environ.get("MUON_WD", 0.02))
-    adam_wd = float(os.environ.get("ADAM_WD", 0.01))
-    qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
-    xsa_last_n = int(os.environ.get("XSA_LAST_N", 0))
-    ema_enabled = bool(int(os.environ.get("EMA_ENABLED", "0")))
-    ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
-    rope_dims = int(os.environ.get("ROPE_DIMS", 0))
-    ln_scale = bool(int(os.environ.get("LN_SCALE", "0")))
-    late_qat = bool(int(os.environ.get("LATE_QAT", "0")))
-    bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 4096))
-    bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
-    ngram_init_std = float(os.environ.get("NGRAM_INIT_STD", 0.005))
-    default_ngram_vocab_sizes = ",".join(
-        str(max(2, v)) for v in (bigram_vocab_size, bigram_vocab_size // 2, bigram_vocab_size // 4)
+def pick_lowp_dtype(device: torch.device) -> torch.dtype:
+    major, _ = torch.cuda.get_device_capability(device)
+    return torch.bfloat16 if major >= 8 else torch.float16
+
+
+def resolve_runtime_paths() -> tuple[Path, Path | None]:
+    script_file = globals().get("__file__")
+    if script_file:
+        resolved = Path(script_file).resolve()
+        return resolved.parent, resolved
+    return Path.cwd(), None
+
+
+def count_visible_gpus() -> int:
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cuda_visible:
+        visible = [part.strip() for part in cuda_visible.split(",") if part.strip() and part.strip() != "-1"]
+        if visible:
+            return len(visible)
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "-L"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        ).stdout
+        count = sum(1 for line in out.splitlines() if line.strip().startswith("GPU "))
+        if count > 0:
+            return count
+    except Exception:
+        pass
+    return torch.cuda.device_count()
+
+
+MATCHED_FINEWEB_REPO_ID = "willdepueoai/parameter-golf"
+MATCHED_FINEWEB_REMOTE_ROOT_PREFIX = "datasets"
+
+
+def dataset_dir_for_variant(name: str) -> str:
+    if name == "byte260":
+        return "fineweb10B_byte260"
+    if name.startswith("sp") and name[2:].isdigit():
+        return f"fineweb10B_{name}"
+    raise ValueError(f"unsupported variant {name!r}; expected byte260 or sp<VOCAB_SIZE>")
+
+
+def local_path_for_remote(data_root: Path, relative_path: str) -> Path:
+    remote_path = Path(relative_path)
+    if MATCHED_FINEWEB_REMOTE_ROOT_PREFIX and remote_path.parts[:1] == (MATCHED_FINEWEB_REMOTE_ROOT_PREFIX,):
+        remote_path = remote_path.relative_to(MATCHED_FINEWEB_REMOTE_ROOT_PREFIX)
+    if remote_path.parts[:1] == ("datasets",):
+        return data_root / "datasets" / Path(*remote_path.parts[1:])
+    if remote_path.parts[:1] == ("tokenizers",):
+        return data_root / "tokenizers" / Path(*remote_path.parts[1:])
+    return data_root / remote_path
+
+
+def download_cached_file(data_root: Path, relative_path: str) -> Path:
+    destination = local_path_for_remote(data_root, relative_path)
+    if destination.exists():
+        return destination
+    if destination.is_symlink():
+        destination.unlink()
+    remote_path = Path(relative_path)
+    cached_path = Path(
+        hf_hub_download(
+            repo_id=MATCHED_FINEWEB_REPO_ID,
+            filename=remote_path.name,
+            subfolder=remote_path.parent.as_posix() if remote_path.parent != Path(".") else None,
+            repo_type="dataset",
+        )
     )
-    ngram_orders = parse_int_csv_env("NGRAM_ORDERS", "2,3,4")
-    ngram_vocab_sizes = parse_int_csv_env("NGRAM_VOCAB_SIZES", default_ngram_vocab_sizes)
-    ngram_num_hashes = parse_int_csv_env("NGRAM_NUM_HASHES", "2,2,2")
-    ngram_mix_mode = os.environ.get("NGRAM_MIX_MODE", "single")
-    ngram_attn_dim = int(os.environ.get("NGRAM_ATTN_DIM", 32))
-    ngram_insert_pos = os.environ.get("NGRAM_INSERT_POS", "before_smear")
-    # Keep `inline` as the real training path for now. The `gpu_eager` and
-    # `cpu` modes were useful for profiling, but were slower in practice.
-    ngram_candidate_source = os.environ.get("NGRAM_CANDIDATE_SOURCE", "inline")
+    cached_source = cached_path.resolve(strict=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(cached_source, destination)
+    except OSError:
+        shutil.copy2(cached_source, destination)
+    return destination
+
+
+def load_cached_manifest(data_root: Path) -> dict:
+    manifest = download_cached_file(data_root, f"{MATCHED_FINEWEB_REMOTE_ROOT_PREFIX}/manifest.json")
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def ensure_cached_fineweb_assets(data_root: Path, variant: str, train_shards: int) -> tuple[str, str]:
+    dataset_name = dataset_dir_for_variant(variant)
+    dataset_dir = data_root / "datasets" / dataset_name
+    tokenizer_dir = data_root / "tokenizers"
+    train_files = sorted(dataset_dir.glob("fineweb_train_*.bin"))
+    val_files = sorted(dataset_dir.glob("fineweb_val_*.bin"))
+    tokenizer_models = list(tokenizer_dir.glob("*.model"))
+    have_enough = len(train_files) >= train_shards and len(val_files) > 0 and len(tokenizer_models) > 0
+    if not have_enough:
+        manifest = load_cached_manifest(data_root)
+        dataset_entry = next((x for x in manifest.get("datasets", []) if x.get("name") == dataset_name), None)
+        if dataset_entry is None:
+            raise ValueError(f"dataset {dataset_name} not found in manifest")
+        max_train_shards = int((dataset_entry.get("stats") or {}).get("files_train"))
+        val_shards = int((dataset_entry.get("stats") or {}).get("files_val"))
+        if train_shards > max_train_shards:
+            raise ValueError(
+                f"{variant} only has {max_train_shards} training shards on {MATCHED_FINEWEB_REPO_ID}, requested {train_shards}"
+            )
+        tokenizer_name = dataset_entry.get("tokenizer_name")
+        tokenizer_entry = next((x for x in manifest.get("tokenizers", []) if x.get("name") == tokenizer_name), None)
+        if tokenizer_entry is None:
+            raise ValueError(f"tokenizer {tokenizer_name} not found in manifest")
+        dataset_prefix = f"{MATCHED_FINEWEB_REMOTE_ROOT_PREFIX}/datasets/{dataset_name}"
+        for i in range(val_shards):
+            download_cached_file(data_root, f"{dataset_prefix}/fineweb_val_{i:06d}.bin")
+        for i in range(train_shards):
+            download_cached_file(data_root, f"{dataset_prefix}/fineweb_train_{i:06d}.bin")
+        for key in ("model_path", "vocab_path", "path"):
+            artifact_path = tokenizer_entry.get(key)
+            if artifact_path:
+                download_cached_file(data_root, f"{MATCHED_FINEWEB_REMOTE_ROOT_PREFIX}/{artifact_path}")
+    tokenizer_path = next(tokenizer_dir.glob("*.model"), None)
+    if tokenizer_path is None:
+        raise FileNotFoundError(f"No tokenizer .model found under {tokenizer_dir}")
+    return str(dataset_dir), str(tokenizer_path)
 
 # -----------------------------
 # MUON OPTIMIZER
@@ -140,7 +204,7 @@ class Hyperparameters:
 
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
-    X = G.bfloat16()
+    X = G.to(dtype=MUON_TRAIN_DTYPE)
     X /= X.norm() + eps
     transposed = G.size(0) > G.size(1)
     if transposed:
@@ -182,7 +246,7 @@ class Muon(torch.optim.Optimizer):
             nesterov = group["nesterov"]
 
             total_params = sum(int(p.numel()) for p in params)
-            updates_flat = torch.zeros(total_params, device=params[0].device, dtype=torch.bfloat16)
+            updates_flat = torch.zeros(total_params, device=params[0].device, dtype=MUON_TRAIN_DTYPE)
 
             curr = 0
             for i, p in enumerate(params):
@@ -278,12 +342,11 @@ def eval_val(
     eval_seq_len: int | None = None,
 ) -> tuple[float, float]:
     seq_len = eval_seq_len or args.train_seq_len
-    local_batch_tokens = args.val_batch_size // (world_size * grad_accum_steps)
+    local_batch_tokens = args.val_batch_size // world_size
     if local_batch_tokens < seq_len:
         raise ValueError(
             "VAL_BATCH_SIZE must provide at least one sequence per rank; "
-            f"got VAL_BATCH_SIZE={args.val_batch_size}, WORLD_SIZE={world_size}, "
-            f"GRAD_ACCUM_STEPS={grad_accum_steps}, seq_len={seq_len}"
+            f"got VAL_BATCH_SIZE={args.val_batch_size}, WORLD_SIZE={world_size}, seq_len={seq_len}"
         )
     local_batch_seqs = local_batch_tokens // seq_len
     total_seqs = (val_tokens.numel() - 1) // seq_len
@@ -300,7 +363,7 @@ def eval_val(
             batch_seq_end = min(batch_seq_start + local_batch_seqs, seq_end)
             raw_start = batch_seq_start * seq_len
             raw_end = batch_seq_end * seq_len + 1
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+            with torch.autocast(device_type="cuda", dtype=args.amp_dtype, enabled=True):
                 if use_ngram_inputs:
                     local = val_tokens[raw_start:raw_end].to(dtype=torch.int64)
                     x_cpu = local[:-1].reshape(-1, seq_len)
@@ -342,22 +405,6 @@ def eval_val(
 # Instead, we get approximately the same model (with a small hit) by quantizing the model to int8 & zlib compressing.
 # We can then decompress the model and run in higher precision for evaluation, after closing in under the size limit.
 
-CONTROL_TENSOR_NAME_PATTERNS = tuple(
-    pattern
-    for pattern in os.environ.get(
-        "CONTROL_TENSOR_NAME_PATTERNS",
-        "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear",
-    ).split(",")
-    if pattern
-)
-INT8_KEEP_FLOAT_FP32_NAME_PATTERNS = tuple(
-    pattern
-    for pattern in os.environ.get(
-        "INT8_KEEP_FLOAT_FP32_NAME_PATTERNS",
-        ",".join(CONTROL_TENSOR_NAME_PATTERNS),
-    ).split(",")
-    if pattern
-)
 INT8_KEEP_FLOAT_MAX_NUMEL = 65_536
 INT8_KEEP_FLOAT_STORE_DTYPE = torch.float16
 INT8_PER_ROW_SCALE_DTYPE = torch.float16
@@ -370,7 +417,7 @@ def tensor_nbytes(t: Tensor) -> int:
 def keep_float_tensor(name: str, t: Tensor, passthrough_orig_dtypes: dict[str, str]) -> Tensor:
     if any(pattern in name for pattern in INT8_KEEP_FLOAT_FP32_NAME_PATTERNS):
         return t.float().contiguous()
-    if t.dtype in {torch.float32, torch.bfloat16}:
+    if t.dtype in {torch.float32, torch.float16, torch.bfloat16}:
         passthrough_orig_dtypes[name] = str(t.dtype).removeprefix("torch.")
         return t.to(dtype=INT8_KEEP_FLOAT_STORE_DTYPE).contiguous()
     return t
@@ -497,7 +544,8 @@ def load_data_shard(file: Path) -> Tensor:
     tokens_np = np.fromfile(file, dtype="<u2", count=num_tokens, offset=header_bytes)
     if tokens_np.size != num_tokens:
         raise ValueError(f"Short read for {file}")
-    return torch.from_numpy(tokens_np.astype(np.uint16, copy=False))
+    shard = torch.from_numpy(tokens_np.astype(np.uint16, copy=False))
+    return shard.pin_memory() if torch.cuda.is_available() else shard
 
 
 class TokenStream:
@@ -551,6 +599,9 @@ class DistributedTokenLoader:
         x = local[:-1].reshape(-1, seq_len)
         y = local[1:].reshape(-1, seq_len)
         if to_device:
+            if not x.is_pinned():
+                x = x.pin_memory()
+                y = y.pin_memory()
             return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
         return x, y
 
@@ -641,6 +692,20 @@ def apply_rotary_emb(x: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
     return torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
 
 
+def causal_attention(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    if flash_attn_3_func is not None:
+        return flash_attn_3_func(q, k, v, causal=True)
+    q_t = q.transpose(1, 2)
+    k_t = k.transpose(1, 2)
+    v_t = v.transpose(1, 2)
+    if q_t.size(1) != k_t.size(1):
+        repeat = q_t.size(1) // k_t.size(1)
+        k_t = k_t.repeat_interleave(repeat, dim=1)
+        v_t = v_t.repeat_interleave(repeat, dim=1)
+    y = F.scaled_dot_product_attention(q_t, k_t, v_t, is_causal=True)
+    return y.transpose(1, 2)
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(
         self,
@@ -693,7 +758,7 @@ class CausalSelfAttention(nn.Module):
         q = apply_rotary_emb(q, cos, sin)
         k = apply_rotary_emb(k, cos, sin)
         q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
-        y = flash_attn_3_func(q, k, v, causal=True)
+        y = causal_attention(q, k, v)
         if self.use_xsa:
             y = self._xsa_efficient(y, v)
         y = y.reshape(bsz, seqlen, dim)
@@ -1170,7 +1235,11 @@ def eval_val_sliding(
     base_model.eval()
     compiled_logits = getattr(base_model, "_compiled_forward_logits_cache", None)
     if compiled_logits is None:
-        compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+        compiled_logits = (
+            torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+            if args.use_compile
+            else base_model.forward_logits
+        )
         setattr(base_model, "_compiled_forward_logits_cache", compiled_logits)
 
     with torch.inference_mode():
@@ -1194,7 +1263,7 @@ def eval_val_sliding(
                 & (score_positions[None, :] >= score_from_cpu[:, None])
             )
 
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda", dtype=args.amp_dtype):
                 if use_ngram_inputs:
                     x_batch, y_batch, candidate_ids = prepare_ngram_inputs(
                         base_model, x_batch_cpu, y_batch_cpu, args.ngram_candidate_source, device
@@ -1300,7 +1369,7 @@ def dequantize_mixed_int6(result: dict[str, Tensor], meta: dict[str, object],
         orig_dtype = orig.dtype
         if info in ("passthrough", "passthrough_ctrl", "passthrough_fp16"):
             t = result[name]
-            if t.dtype == torch.float16 and orig_dtype in (torch.float32, torch.bfloat16):
+            if t.dtype == torch.float16 and orig_dtype in (torch.float32, torch.float16, torch.bfloat16):
                 t = t.to(orig_dtype)
             out[name] = t
             continue
@@ -1316,29 +1385,21 @@ def dequantize_mixed_int6(result: dict[str, Tensor], meta: dict[str, object],
 # TRAINING
 # -----------------------------
 
-def main() -> None:
-    global zeropower_via_newtonschulz5
+def run_worker(rank: int, world_size: int, args: Hyperparameters, init_method: str | None = None) -> None:
+    global zeropower_via_newtonschulz5, MUON_TRAIN_DTYPE
 
-    code = Path(__file__).read_text(encoding="utf-8")
-    args = Hyperparameters()
-    zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
+    _, source_path = resolve_runtime_paths()
+    code = source_path.read_text(encoding="utf-8") if source_path is not None else "# interactive notebook execution\n"
 
     # -----------------------------
     # DISTRIBUTED + CUDA SETUP
     # -----------------------------
 
-    distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
-    rank = int(os.environ.get("RANK", "0"))
-    world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    distributed = world_size > 1
+    local_rank = rank
     if world_size <= 0:
         raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
-    if args.grad_accum_steps > 0:
-        grad_accum_steps = args.grad_accum_steps
-    else:
-        if 8 % world_size != 0:
-            raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so default grad_accum_steps stays integral")
-        grad_accum_steps = 8 // world_size
+    grad_accum_steps = args.grad_accum_steps
     if grad_accum_steps <= 0:
         raise ValueError(f"GRAD_ACCUM_STEPS must be positive, got {grad_accum_steps}")
     if args.train_batch_tokens % (world_size * grad_accum_steps) != 0:
@@ -1350,9 +1411,23 @@ def main() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
     device = torch.device("cuda", local_rank)
+    if args.amp_dtype is None:
+        args.amp_dtype = pick_lowp_dtype(device)
+    if args.lowp_dtype is None:
+        args.lowp_dtype = args.amp_dtype
+    MUON_TRAIN_DTYPE = args.amp_dtype
+    if args.use_compile:
+        zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
     torch.cuda.set_device(device)
     if distributed:
-        dist.init_process_group(backend="nccl", device_id=device)
+        if init_method is None:
+            raise ValueError("init_method is required for multi-GPU spawn")
+        dist.init_process_group(
+            backend="nccl",
+            init_method=init_method,
+            rank=rank,
+            world_size=world_size,
+        )
         dist.barrier()
     master_process = rank == 0
 
@@ -1363,7 +1438,7 @@ def main() -> None:
 
     enable_cudnn_sdp(False)
     enable_flash_sdp(True)
-    enable_mem_efficient_sdp(False)
+    enable_mem_efficient_sdp(True)
     enable_math_sdp(False)
 
     logfile = None
@@ -1451,12 +1526,12 @@ def main() -> None:
         xsa_last_n=args.xsa_last_n,
         rope_dims=args.rope_dims,
         ln_scale=args.ln_scale,
-    ).to(device).bfloat16()
+    ).to(device).to(dtype=args.lowp_dtype)
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
             module.float()
     restore_low_dim_params_to_fp32(base_model)
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
+    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True) if args.use_compile else base_model
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
 
     # Optimizer split:
@@ -1530,6 +1605,7 @@ def main() -> None:
             fused=True,
         )
         optimizers.insert(1, optimizer_head)
+    scaler = torch.amp.GradScaler("cuda", enabled=args.amp_dtype == torch.float16)
 
     n_params = sum(p.numel() for p in base_model.parameters())
     mtp_params = sum(p.numel() for p in base_model.mtp_heads.parameters())
@@ -1537,7 +1613,7 @@ def main() -> None:
     log0(f"model_params:{n_params}")
     log0(f"mtp_num_heads:{args.mtp_num_heads} mtp_loss_weight:{args.mtp_loss_weight} mtp_params:{mtp_params}")
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
-    log0("sdp_backends:cudnn=False flash=True mem_efficient=False math=False")
+    log0(f"sdp_backends:cudnn=False flash=True mem_efficient=True math=False flash_attn_interface:{flash_attn_3_func is not None}")
     log0(f"attention_mode:gqa num_heads:{args.num_heads} num_kv_heads:{args.num_kv_heads}")
     log0(
         f"tie_embeddings:{args.tie_embeddings} embed_lr:{token_lr} "
@@ -1550,6 +1626,8 @@ def main() -> None:
         f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
+    log0(f"amp_dtype:{args.amp_dtype} lowp_dtype:{args.lowp_dtype} use_compile:{args.use_compile}")
+    log0(f"grad_scaler_enabled:{scaler.is_enabled()}")
     log0(f"ngram_candidate_source:{args.ngram_candidate_source}")
     log0(f"seed:{args.seed}")
 
@@ -1588,7 +1666,7 @@ def main() -> None:
             for micro_step in range(grad_accum_steps):
                 if distributed:
                     model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                with torch.autocast(device_type="cuda", dtype=args.amp_dtype, enabled=True):
                     if use_ngram_inputs:
                         x_raw, y_raw = train_loader.next_batch(
                             args.train_batch_tokens,
@@ -1603,9 +1681,18 @@ def main() -> None:
                     else:
                         x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
                         warmup_loss = model(x, y)
-                (warmup_loss * grad_scale).backward()
+                scaled_loss = warmup_loss * grad_scale
+                if scaler.is_enabled():
+                    scaler.scale(scaled_loss).backward()
+                else:
+                    scaled_loss.backward()
             for opt in optimizers:
-                opt.step()
+                if scaler.is_enabled():
+                    scaler.step(opt)
+                else:
+                    opt.step()
+            if scaler.is_enabled():
+                scaler.update()
             zero_grad_all()
             if args.warmup_steps <= 20 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == args.warmup_steps:
                 log0(f"warmup_step:{warmup_step + 1}/{args.warmup_steps}")
@@ -1671,8 +1758,7 @@ def main() -> None:
 
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
-        qat_threshold = float(os.environ.get("QAT_THRESHOLD", "0.1"))
-        if args.late_qat and scale < qat_threshold and not CastedLinear._qat_enabled:
+        if args.late_qat and scale < args.qat_threshold and not CastedLinear._qat_enabled:
             CastedLinear._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
         zero_grad_all()
@@ -1680,7 +1766,7 @@ def main() -> None:
         for micro_step in range(grad_accum_steps):
             if distributed:
                 model.require_backward_grad_sync = micro_step == grad_accum_steps - 1
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+            with torch.autocast(device_type="cuda", dtype=args.amp_dtype, enabled=True):
                 if use_ngram_inputs:
                     x_raw, y_raw = train_loader.next_batch(
                         args.train_batch_tokens,
@@ -1696,7 +1782,11 @@ def main() -> None:
                     x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
                     loss = model(x, y)
             train_loss += loss.detach()
-            (loss * grad_scale).backward()
+            scaled_loss = loss * grad_scale
+            if scaler.is_enabled():
+                scaler.scale(scaled_loss).backward()
+            else:
+                scaled_loss.backward()
         train_loss /= grad_accum_steps
 
         frac = min(step / args.muon_momentum_warmup_steps, 1.0) if args.muon_momentum_warmup_steps > 0 else 1.0
@@ -1708,10 +1798,18 @@ def main() -> None:
             for group in opt.param_groups:
                 group["lr"] = group["base_lr"] * scale
 
+        if scaler.is_enabled():
+            for opt in optimizers:
+                scaler.unscale_(opt)
         if args.grad_clip_norm > 0:
             torch.nn.utils.clip_grad_norm_(base_model.parameters(), args.grad_clip_norm)
         for opt in optimizers:
-            opt.step()
+            if scaler.is_enabled():
+                scaler.step(opt)
+            else:
+                opt.step()
+        if scaler.is_enabled():
+            scaler.update()
         zero_grad_all()
 
         step += 1
@@ -1829,13 +1927,13 @@ def main() -> None:
         xsa_last_n=args.xsa_last_n,
         rope_dims=args.rope_dims,
         ln_scale=args.ln_scale,
-    ).to(device).bfloat16()
+    ).to(device).to(dtype=args.lowp_dtype)
     for m in eval_model.modules():
         if isinstance(m, CastedLinear):
             m.float()
     restore_low_dim_params_to_fp32(eval_model)
     eval_model.load_state_dict(deq_state, strict=True)
-    compiled_eval = torch.compile(eval_model, dynamic=False, fullgraph=True)
+    compiled_eval = torch.compile(eval_model, dynamic=False, fullgraph=True) if args.use_compile else eval_model
 
     # Standard non-overlapping eval (sanity check)
     torch.cuda.synchronize()
@@ -1889,6 +1987,128 @@ def main() -> None:
 
     if distributed:
         dist.destroy_process_group()
+
+
+def main() -> None:
+    script_dir, source_path = resolve_runtime_paths()
+    data_root = script_dir / "data"
+    os.chdir(script_dir)
+    visible_gpus = count_visible_gpus()
+    if visible_gpus <= 0:
+        raise RuntimeError("CUDA is required")
+    world_size = min(2, visible_gpus)
+    interactive_notebook = source_path is None
+
+    args = Hyperparameters()
+
+    # Edit this block directly in Kaggle notebooks instead of relying on env vars.
+    args.dataset_variant = "sp1024"
+    args.dataset_train_shards = 80
+    dataset_path, tokenizer_path = ensure_cached_fineweb_assets(
+        data_root,
+        variant=args.dataset_variant,
+        train_shards=args.dataset_train_shards,
+    )
+    args.data_path = dataset_path
+    args.train_files = os.path.join(args.data_path, "fineweb_train_*.bin")
+    args.val_files = os.path.join(args.data_path, "fineweb_val_*.bin")
+    args.tokenizer_path = tokenizer_path
+    args.run_id = f"m34_kaggle_t4_{world_size}gpu"
+    args.seed = 1337
+
+    args.val_batch_size = 65_536
+    args.val_loss_every = 0
+    args.train_log_every = 100
+
+    args.iterations = 20000
+    args.warmdown_iters = 1200
+    args.warmup_steps = 10
+    args.train_seq_len = 2048
+    args.eval_seq_len = 2048
+    args.max_wallclock_seconds = 9 * 3600
+    args.grad_accum_steps = 16 if world_size >= 2 else 32
+    args.train_batch_tokens = 65_536 * world_size * args.grad_accum_steps
+    args.qk_gain_init = 1.0
+    args.qat_threshold = 0.1
+
+    args.vocab_size = 1024
+    args.num_layers = 13 # 我改的，占参数量用的
+    args.num_kv_heads = 2
+    args.model_dim = 384
+    args.num_heads = 6
+    args.mlp_mult = 3.0
+    args.tie_embeddings = True
+    args.rope_base = 10000.0
+    args.logit_softcap = 30.0
+
+    args.embed_lr = 0.6
+    args.head_lr = 0.008
+    args.tied_embed_lr = 0.05
+    args.tied_embed_init_std = 0.005
+    args.matrix_lr = 0.04
+    args.scalar_lr = 0.04
+    args.muon_momentum = 0.95
+    args.muon_backend_steps = 5
+    args.muon_momentum_warmup_start = 0.85
+    args.muon_momentum_warmup_steps = 500
+    args.beta1 = 0.9
+    args.beta2 = 0.95
+    args.adam_eps = 1e-8
+    args.grad_clip_norm = 0.2
+    args.eval_stride = 64
+    args.mtp_num_heads = 0
+    args.mtp_loss_weight = 0.2
+    args.muon_beta2 = 0.95
+    args.swa_enabled = True
+    args.swa_every = 200
+    args.muon_wd = 0.02
+    args.adam_wd = 0.01
+    args.qat_enabled = False
+    args.xsa_last_n = 0
+    args.ema_enabled = False
+    args.ema_decay = 0.997
+    args.rope_dims = 0
+    args.ln_scale = False
+    args.late_qat = False
+
+    args.bigram_vocab_size = 10240
+    args.bigram_dim = 96
+    args.ngram_init_std = 0.005
+    args.ngram_orders = [2, 3, 4]
+    args.ngram_vocab_sizes = [10240, 4096, 2048]
+    args.ngram_num_hashes = [2, 2, 2]
+    args.ngram_mix_mode = "attn_lite"
+    args.ngram_attn_dim = 32
+    args.ngram_insert_pos = "after_smear"
+    args.ngram_candidate_source = "inline"
+
+    # T4 notebook runs often behave better without torch.compile; flip this back on if a smoke test proves it helps.
+    args.use_compile = False
+    args.amp_dtype = None if interactive_notebook and world_size > 1 else pick_lowp_dtype(torch.device("cuda", 0))
+    args.lowp_dtype = args.amp_dtype
+    args.world_size = world_size
+
+    if world_size == 1:
+        run_worker(0, 1, args)
+        return
+
+    with tempfile.NamedTemporaryFile(prefix="pg_kaggle_ddp_", suffix=".init", delete=False) as tmp:
+        init_method = f"file://{tmp.name}"
+        init_path = tmp.name
+    try:
+        if interactive_notebook:
+            mp.start_processes(
+                run_worker,
+                args=(world_size, args, init_method),
+                nprocs=world_size,
+                join=True,
+                start_method="fork",
+            )
+        else:
+            mp.set_start_method("spawn", force=True)
+            mp.spawn(run_worker, args=(world_size, args, init_method), nprocs=world_size, join=True)
+    finally:
+        Path(init_path).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

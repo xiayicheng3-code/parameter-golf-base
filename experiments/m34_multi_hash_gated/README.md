@@ -17,6 +17,12 @@ Candidate-id execution modes:
 - `NGRAM_CANDIDATE_SOURCE=gpu_eager`: build candidate ids outside the compiled model, but still on GPU
 - `NGRAM_CANDIDATE_SOURCE=cpu`: build candidate ids on CPU and pass them in as an extra model input
 
+Current recommendation:
+
+- Use `NGRAM_CANDIDATE_SOURCE=inline` for actual training runs.
+- Treat `gpu_eager` and `cpu` as debugging/profiling paths only. In our current experiments they were slower than `inline`, so they are kept only for bottleneck isolation.
+- Treat the Triton prototype in [fused_ngram_single_io.py](/Users/yichengxia/ML_NN_DA/parameter_golf/parameter-golf-base/experiments/m34_multi_hash_gated/fused_ngram_single_io.py) as research-only for now. It is not integrated into `train_gpt.py` and should not be used for main experiments yet.
+
 Hypothesis:
 
 - Standard single-bucket bigram hashing wastes capacity on destructive collisions.
