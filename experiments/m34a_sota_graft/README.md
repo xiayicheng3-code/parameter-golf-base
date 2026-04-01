@@ -1,120 +1,214 @@
-# M34a SOTA Graft
+# Dual-Match Multi-Order Hash Embedding (M34a)
 
-This folder is a local experiment copy of the 2026-03-25 SOTA stack with the
-original local hash-embedding slot replaced by a grafted M34-style multi-order
-ngram hash module.
+This folder contains Dual-Match Multi-Order Hash Embedding (M34a), a local
+experiment branch that grafts the method into the 2026-03-25 legal SOTA
+training stack.
 
-What is preserved from the source stack:
+This folder is not a record reproduction. It is a working research branch for:
 
-- parameter banking + Parallel Muon
-- XSA-all / VE / partial RoPE / LN scale
+- collision-robust n-gram hash embeddings
+- compatibility with the XSA + Parallel Muon + GPTQ stack
+- early 1x H100 proxy validation before 8x H100 runs
+
+## What Is Preserved
+
+The following parts are intentionally kept from the source stack:
+
+- 11L x 512 backbone
+- XSA on all 11 layers
+- SmearGate
+- VE / partial RoPE / LN scale
+- Parameter Banking + Parallel Muon
+- EMA + tight SWA
 - AR self-generated GPTQ path
+- selective pruning + LZMA compression
 
-What is intentionally changed:
+## What Is Changed
 
-- the old single-table local hash embedding
-- replaced with a sigmoid-gated multi-order hash embedding using `NGRAM_ORDERS`,
-  `NGRAM_VOCAB_SIZES`, and `NGRAM_NUM_HASHES`
+The old single-table local hash branch is replaced by Dual-Match Multi-Order
+Hash Embedding (M34a), with the following design:
 
-Notes:
+- `2/3/4-gram` are all enabled through `NGRAM_ORDERS`
+- each order owns its own embedding region
+- hashes within the same order share that order's embedding region
+- multiple hash functions are still used to provide multiple candidate views
+- candidate filtering uses a sigmoid `q * h` gate rather than softmax attention
+- gate bias is shared per order, not per hash slot
 
-- This is an experiment folder, not a record reproduction.
-- The rest of the original README below is retained only as lineage/context for
-  the copied source stack.
+In short:
 
----
+- `order` controls parameter space
+- `hash` controls access pattern
+- the gate decides whether a candidate is semantically usable
 
-## Results
+## Current Module Shape
 
-| Seed | Steps | ms/step | Pre-quant BPB | **Sliding BPB** | Artifact |
-|------|-------|---------|---------------|-----------------|----------|
-| 314 | 6,927 | 86.6 | 1.1354 | **1.1151** | 15,863,278 |
-| 42 | 6,922 | 86.7 | 1.1349 | **1.1144** | 15,984,850 |
-| 999 | 6,917 | 86.8 | 1.1353 | **1.1148** | 15,876,310 |
-| **Mean** | | | | **1.1147** | |
+The current public interface is fully `NGRAM_*` based:
 
-Current SOTA (PR #549, exact 3-seed mean): **1.11937967 BPB** (**1.89002068 nats**). This run's exact 3-seed mean is **1.11473509 BPB** (**1.88217853 nats**). Delta: **−0.00784215 nats** (**−0.00464458 BPB**).
+- `NGRAM_BASE_VOCAB_SIZE`
+- `NGRAM_DIM`
+- `NGRAM_ORDERS`
+- `NGRAM_VOCAB_SIZES`
+- `NGRAM_NUM_HASHES`
+- `NGRAM_INIT_STD`
 
-Using the exact per-seed scores from the PR #549 logs (`1.11922988`, `1.12002032`, `1.11888882`) and this run (`1.11508120`, `1.11437394`, `1.11475014`), Welch's t-test gives **t = -11.83**, **df ≈ 3.31**.
+There is no legacy `BIGRAM_*` compatibility layer in this experiment copy.
 
----
+## Current Best Proxy Result
 
-## Main Changes
+Current notable 1x H100 10-minute proxy run:
 
-The comparison baseline is [PR #549](https://github.com/openai/parameter-golf/pull/549), the current legal leaderboard entry at **1.1194 BPB**. The implementation lineage is closer to [PR #609](https://github.com/openai/parameter-golf/pull/609): this run keeps the XSA-all + Full GPTQ + selective-pruning stack, but this graft replaces the old single-table hash branch with a multi-order ngram hash module and uses `lzma preset=9`.
+- log: [log0401.txt](./log0401.txt)
+- train wallclock: ~600s
+- step time: ~217.9 ms
+- pre-quant val BPB: `1.2374`
+- int6 roundtrip val BPB: `1.24643762`
+- int6 sliding-window val BPB: `1.22250731`
+- total submission size: `13,580,697` bytes
 
-### 1. AR Self-Generated Full Hessian GPTQ
+This result is interesting because:
 
-PR #549 used GPTQ-lite (diagonal Hessian approximation). We use Full Hessian GPTQ with Cholesky error compensation and column reordering — a strictly better quantizer.
+- the compressed artifact is well below 16MB
+- the model appears not to be compression-bound yet
+- the Dual-Match module is already compatible with the legal GPTQ pipeline
 
-The calibration problem: prior Full Hessian GPTQ implementations (PRs #535, #569, #593, #609) calibrated on training data, ruled illegal after the 600s window. We solve this by having the model generate its own calibration data. After training completes, the model autoregressively generates 64 sequences of 2048 tokens (temperature=0.8, fixed seed). Hessians H = X^T X are collected from these self-generated sequences. No val data, no train data accessed during quantization.
+This is still a 1x H100 proxy result, not an 8x H100 record-equivalent run.
 
-### 2. Multi-order Ngram Hash Branch
+## Run Commands
 
-This graft uses `NGRAM_BASE_VOCAB_SIZE`, `NGRAM_DIM`, `NGRAM_ORDERS`,
-`NGRAM_VOCAB_SIZES`, and `NGRAM_NUM_HASHES` as the only public interface.
-There is no legacy compatibility layer in this experiment copy.
+### 1x H100 Fair Proxy
 
-### 3. XSA on all 11 layers (up from last 4)
-
-PR #549 applied XSA to the last 4 layers. Extending to all 11 layers forces cross-position information mixing from layer 0 at zero parameter cost. Source: [PR #478](https://github.com/openai/parameter-golf/pull/478) by @gowtham0992.
-
-### Dropped: TTT
-
-PR #549 used Legal Score-First TTT for −0.0025 BPB. On this stack, TTT is neutral or negative (25 failed attempts across two stacks — see our [PR #756](https://github.com/openai/parameter-golf/pull/756)). The Full Hessian GPTQ improvement more than compensates for dropping TTT.
-
----
-
-## Architecture
-
-| Component | Setting | First introduced by |
-|-----------|---------|---------------------|
-| Layers | 11 (512d, 8 GQA heads, 4 KV heads) | Baseline |
-| MLP | 3× (1536) with LeakyReLU(0.5)² | [#493](https://github.com/openai/parameter-golf/pull/493) @parinzee |
-| Attention | XSA on all 11 layers | [#478](https://github.com/openai/parameter-golf/pull/478) @gowtham0992 |
-| NgramHash | Controlled by `NGRAM_*` envs | M34a graft on top of this stack |
-| RoPE | Partial (16/64 dims) | [#315](https://github.com/openai/parameter-golf/pull/315) @jfprincz |
-| LN Scale | 1/√(layer+1) | [#315](https://github.com/openai/parameter-golf/pull/315) @jfprincz |
-| VE128 | Layers 9-10 | [#374](https://github.com/openai/parameter-golf/pull/374) @unnir |
-| SmearGate | Position-mixing gate | [#65](https://github.com/openai/parameter-golf/pull/65) @aquariouseworkman |
-| U-Net skips | Encoder-decoder connections | [#289](https://github.com/openai/parameter-golf/pull/289) |
-| Weight avg | EMA(0.997) + Tight SWA(every 50) | [#401](https://github.com/openai/parameter-golf/pull/401) @newjordan |
-| Quantization | **Full Hessian GPTQ int6 (AR self-gen calibration)** | **This work** (GPTQ: [#535](https://github.com/openai/parameter-golf/pull/535) @raahilshah) |
-| Compression | LZMA preset=9 | [#160](https://github.com/openai/parameter-golf/pull/160) @ChaseWNorton |
-| Warmdown | 4000 iterations | [#364](https://github.com/openai/parameter-golf/pull/364) @shikhar1729 |
-| Optimizer | **Parallel Muon + Parameter Banking** | **[#399](https://github.com/openai/parameter-golf/pull/399) @abaybektursun** |
-| Late QAT | STE at LR scale < 0.15 | [#286](https://github.com/openai/parameter-golf/pull/286) @chris-buckley |
-| Selective pruning | ±1 values by reconstruction error | [#609](https://github.com/openai/parameter-golf/pull/609) @saml212 |
-| Flash Attention 3 | Hopper warp-specialized kernels | [#122](https://github.com/openai/parameter-golf/pull/122) @mtybadger |
-
-## Requirements
-
-**Flash Attention 3 (Hopper) is required.** The script imports `flash_attn_interface` directly and was run with PyTorch 2.9.1+cu128.
+Use `GRAD_ACCUM_STEPS=1` for fair single-GPU throughput checks.
 
 ```bash
-pip install --break-system-packages flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu128_torch291
-pip install sentencepiece zstandard
-python3 -c "from flash_attn_interface import flash_attn_func; import sentencepiece, zstandard; print('deps OK')"
+RUN_ID=m34a_sota_graft_order_shared_1xh100 \
+DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+NUM_LAYERS=11 \
+MODEL_DIM=512 \
+NUM_HEADS=8 \
+NUM_KV_HEADS=4 \
+MLP_MULT=3.0 \
+TRAIN_SEQ_LEN=2048 \
+EVAL_SEQ_LEN=2048 \
+TRAIN_BATCH_TOKENS=262144 \
+GRAD_ACCUM_STEPS=1 \
+VAL_BATCH_SIZE=262144 \
+VAL_LOSS_EVERY=0 \
+TRAIN_LOG_EVERY=25 \
+MAX_WALLCLOCK_SECONDS=600 \
+NGRAM_BASE_VOCAB_SIZE=3072 \
+NGRAM_DIM=112 \
+NGRAM_ORDERS=2,3,4 \
+NGRAM_VOCAB_SIZES=3072,1536,768 \
+NGRAM_NUM_HASHES=2,2,2 \
+NGRAM_INIT_STD=0.005 \
+WARMDOWN_ITERS=4000 \
+TARGET_MB=15.9 \
+torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 
-## Run Command
+### 8x H100 Starting Point
+
+Suggested first 8x H100 config:
 
 ```bash
-NGRAM_BASE_VOCAB_SIZE=3072 NGRAM_DIM=112 \
-NGRAM_ORDERS=2,3,4 NGRAM_VOCAB_SIZES=3072,1536,768 NGRAM_NUM_HASHES=2,2,2 \
-WARMDOWN_ITERS=4000 TARGET_MB=15.9 SEED=314 \
+NGRAM_BASE_VOCAB_SIZE=3072 \
+NGRAM_DIM=112 \
+NGRAM_ORDERS=2,3,4 \
+NGRAM_VOCAB_SIZES=3072,1536,768 \
+NGRAM_NUM_HASHES=2,2,2 \
+WARMDOWN_ITERS=4000 \
+TARGET_MB=15.9 \
+GRAD_ACCUM_STEPS=1 \
+TRAIN_BATCH_TOKENS=786432 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
+This is only a starting point. Batch sizing for 8x H100 is still an open
+systems question for this branch.
+
+## GPTQ Notes
+
+This experiment branch keeps the legal AR self-generated GPTQ path, but the implementation
+has already been modified to reduce obvious post-training overhead:
+
+- autoregressive calibration generation now uses an incremental cached decode path
+- Hessian collection now supports batched token sequences instead of one sequence
+  per forward
+
+This area is still under active optimization.
+
+## Known Caveats
+
+- TTT is not enabled in this branch.
+- There is no separate "test-time ngram adaptation" path. The n-gram branch is
+  part of the normal forward pass in both training and eval.
+- The 1x H100 proxy can indicate early quality and systems health, but it does
+  not fully predict 8x H100 behavior.
+- Model size selection is still unresolved: this branch currently looks
+  under-compressed rather than over-compressed on 1x H100.
+
+## Design Philosophy
+
+My main modeling belief is that a good neural architecture should not just stack popular tricks. It should introduce an inductive bias that still makes sense before we even talk about benchmarks.
+
+In small hash tables, n-gram hash embeddings are naturally collision-heavy. This is manageable for bigrams, but it becomes much more severe for 3-gram and 4-gram features. At the same time, a 1024-token SentencePiece vocabulary often splits a single word into multiple subword pieces, so higher-order local patterns can still be important. This creates a tension: higher-order n-grams are potentially useful, but they are also much noisier under aggressive hashing.
+
+My answer is to require two matches before an n-gram feature enters the residual stream: a hash match and a semantic match. The hash function retrieves candidate embeddings, but the model should still ask whether a candidate is actually compatible with the current token state. That is the motivation behind Dual-Match Multi-Order Hash Embedding (M34a): a multi-order hash module that filters candidates instead of trusting every hash hit equally.
+
+### Works That Inspired Me
+
+1. Gravity Tokenizer  
+   https://github.com/dcrow85/Avalanche/blob/b0fee47daa91438c68e5e02493efb0bae0341484/gravity-tokenizer/submission/README.md  
+   This reinforced the idea that some local token combinations are much more important than others.
+
+2. DeepSeek Engram  
+   https://github.com/deepseek-ai/Engram/blob/fb7f84a21f91223715394a33a1dc24bbfb7f788e/Engram_paper.pdf  
+   This inspired the use of dot-product-style semantic filtering on top of hash retrieval.
+
+3. Meituan-Longcat  
+   https://arxiv.org/pdf/2601.21204  
+   This showed that multiple hash views are a promising way to reduce collision damage, although I wanted a more selective mechanism than simple averaging.
+
+### Engineering Decisions
+
+1. Same order, same table  
+   Hash functions within the same n-gram order share one embedding region. This improves parameter efficiency and reduces the chance of having many underused slots.
+
+2. Sigmoid gate instead of softmax  
+   If all retrieved candidates are noise, the model should be able to suppress all of them. A sigmoid gate supports that behavior more naturally than a softmax mixture.
+
+3. Two hash functions instead of four  
+   I originally used four hashes per order to reduce collisions, but the extra retrieval and gating cost became too IO-heavy. Reducing this to two kept most of the quality while making the system much cheaper to run.
+
+
+
+## About Me
+
+Hi! I'm Yicheng Xia, a first-year student at the University of Toronto studying Mathematical Applications in Economics and Finance. I’m especially interested in thinking about unconventional neural network architectures, compression ideas, and systems-aware training tricks.
+
+I'm actively seeking internship, research, and hackathon opportunities. Feel free to connect with me on LinkedIn: www.linkedin.com/in/yicheng-xia-2576b63a9
+
 ## Lineage
 
-```
-PR #549 (Legal SOTA, 1.1194) — our Parallel Muon base with LeakyReLU² + legal TTT
-    └── This work adds:
-        ├── AR self-gen GPTQ calibration (no external data during quantization)
-        ├── M34a multi-order ngram hash graft
-        ├── XSA-all (from #478/@gowtham0992, applied via #609/@saml212)
-        ├── Selective ±1 pruning (from #609/@saml212)
-        ├── warmdown=4000, LZMA=9 (from #364/@shikhar1729, #160/@ChaseWNorton)
-        └── Guided by PR #670 negative results (30+ failed experiments)
-```
+This experiment branch is derived from the legal SOTA family around:
+
+- PR #549
+- PR #609
+- the 2026-03-25 `ValCalib_GPTQ_XSA_BigramHash3072` stack
+
+The goal is not to copy the full record recipe blindly, but to test whether
+Dual-Match Multi-Order Hash Embedding (M34a) can survive inside a strong modern
+stack without losing training speed or legal quantization compatibility.
+
+## Requirements
+
+This script expects the same core environment assumptions as the copied SOTA
+stack:
+
+- Hopper-class GPU for the FlashAttention 3 path
+- PyTorch + CUDA environment compatible with `flash_attn_interface`
+- `sentencepiece`
+- `zstandard` optional, otherwise compression falls back to `zlib`
