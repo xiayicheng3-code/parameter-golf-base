@@ -48,7 +48,7 @@ class Hyperparameters:
     grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
     cudagraph_microstep = bool(int(os.environ.get("CUDAGRAPH_MICROSTEP", "1")))
     cudagraph_warmup_iters = int(os.environ.get("CUDAGRAPH_WARMUP_ITERS", 3))
-    train_compile_mode = os.environ.get("TRAIN_COMPILE_MODE", "reduce-overhead" if cudagraph_microstep else "default")
+    train_compile_mode = os.environ.get("TRAIN_COMPILE_MODE", "default")
     eval_compile_mode = os.environ.get("EVAL_COMPILE_MODE", "default")
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
@@ -622,12 +622,25 @@ class StaticMicrostepGraph:
         return self.loss
 
 
-def compile_with_mode(module_or_fn, mode: str):
-    if mode.lower() == "none":
+def compile_with_mode(module_or_fn, mode: str, *, disable_cudagraphs: bool = False):
+    mode = mode.lower()
+    if mode == "none":
         return module_or_fn
+    options = {}
+    if disable_cudagraphs:
+        # Raw torch.cuda.CUDAGraph replay and Inductor cudagraph trees do not
+        # compose well. Keep compile for fusion/codegen, but explicitly turn
+        # off compiler-managed cudagraphs for the training model.
+        options["triton.cudagraphs"] = False
+        if mode == "reduce-overhead":
+            mode = "default"
+        elif mode == "max-autotune":
+            mode = "max-autotune-no-cudagraphs"
     kwargs = dict(dynamic=False, fullgraph=True)
-    if mode.lower() != "default":
+    if mode != "default":
         kwargs["mode"] = mode
+    if options:
+        kwargs["options"] = options
     return torch.compile(module_or_fn, **kwargs)
 
 # --- Transformer modules ---
@@ -2105,7 +2118,21 @@ def main() -> None:
     restore_low_dim_params_to_fp32(base_model)
     # No DDP -- Parallel Muon handles bank grad communication via reduce-scatter,
     # and non-bank grads are manually all-reduced before Adam steps.
-    model = compile_with_mode(base_model, args.train_compile_mode)
+    effective_train_compile_mode = args.train_compile_mode.lower()
+    if args.cudagraph_microstep and effective_train_compile_mode == "reduce-overhead":
+        effective_train_compile_mode = "default"
+    elif args.cudagraph_microstep and effective_train_compile_mode == "max-autotune":
+        effective_train_compile_mode = "max-autotune-no-cudagraphs"
+    if effective_train_compile_mode != args.train_compile_mode.lower():
+        log0(
+            "cudagraph_microstep:overriding_train_compile_mode "
+            f"requested:{args.train_compile_mode} effective:{effective_train_compile_mode}"
+        )
+    model = compile_with_mode(
+        base_model,
+        effective_train_compile_mode,
+        disable_cudagraphs=args.cudagraph_microstep,
+    )
     compiled_model = model
     graph_model = model
 
@@ -2208,7 +2235,9 @@ def main() -> None:
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
     log0(
-        f"train_compile_mode:{args.train_compile_mode} eval_compile_mode:{args.eval_compile_mode} "
+        f"train_compile_mode:{args.train_compile_mode} "
+        f"effective_train_compile_mode:{effective_train_compile_mode} "
+        f"eval_compile_mode:{args.eval_compile_mode} "
         f"cudagraph_microstep:{args.cudagraph_microstep} cudagraph_warmup_iters:{args.cudagraph_warmup_iters}"
     )
     log0(f"seed:{args.seed}")
@@ -2330,7 +2359,11 @@ def main() -> None:
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
             if microstep_graph is not None:
                 microstep_graph.invalidate()
-                graph_model = compile_with_mode(base_model, args.train_compile_mode)
+                graph_model = compile_with_mode(
+                    base_model,
+                    effective_train_compile_mode,
+                    disable_cudagraphs=True,
+                )
                 model = graph_model
                 compiled_model = model
                 microstep_graph.model = graph_model

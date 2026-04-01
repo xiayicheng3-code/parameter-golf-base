@@ -83,6 +83,9 @@ microstep:
 - fixed-shape `x/y` staging buffers
 - one captured forward + backward replay per microstep
 - optimizer steps, `Muon`, and distributed communication remain eager
+- training-side `torch.compile` is still used for fusion, but compiler-managed
+  cudagraphs are explicitly disabled to avoid nesting with the raw
+  `torch.cuda.CUDAGraph` replay path
 
 This is intentionally more aggressive than `torch.compile(..., fullgraph=True)`
 alone, but still much safer than trying to graph the entire optimizer step.
@@ -120,7 +123,7 @@ NGRAM_INIT_STD=0.005 \
 WARMDOWN_ITERS=4000 \
 CUDAGRAPH_MICROSTEP=1 \
 CUDAGRAPH_WARMUP_ITERS=3 \
-TRAIN_COMPILE_MODE=reduce-overhead \
+TRAIN_COMPILE_MODE=default \
 EVAL_COMPILE_MODE=default \
 LATE_QAT_THRESHOLD=0 \
 TARGET_MB=15.9 \
