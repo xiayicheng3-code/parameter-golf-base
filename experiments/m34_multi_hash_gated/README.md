@@ -1,8 +1,8 @@
 # M34: Multi-Hash Gated Ngram Embedding
 
-This experiment starts from the 11L `BigramHash + SmearGate` style baseline and
-replaces the single-bucket bigram lookup with a flat-fused multi-order n-gram
-embedding module.
+This experiment starts from the 11L `Hash Lookup + SmearGate` style baseline and
+replaces the old single-bucket hashed lookup with a flat-fused multi-order
+n-gram embedding module.
 
 Current mixing modes:
 
@@ -22,12 +22,16 @@ Current recommendation:
 
 - Use `NGRAM_CANDIDATE_SOURCE=inline` for actual training runs.
 - Use `NGRAM_MIX_MODE=sigmoid_qh` for actual training runs.
+- Use `QUANT_METHODS=per_row,gptq` to evaluate both compression paths from one training run.
+- Use `QUANT_METHODS=per_row` if you want the old non-GPTQ compression baseline only.
 - Treat `gpu_eager` and `cpu` as debugging/profiling paths only. In our current experiments they were slower than `inline`, so they are kept only for bottleneck isolation.
 - Treat the Triton prototype in [fused_ngram_single_io.py](/Users/yichengxia/ML_NN_DA/parameter_golf/parameter-golf-base/experiments/m34_multi_hash_gated/fused_ngram_single_io.py) as research-only for now. It is not integrated into `train_gpt.py` and should not be used for main experiments yet.
+- Current GPTQ import scope is intentionally narrow: AR self-generated calibration + Hessian-aware
+  int6 GPTQ are integrated, but the SOTA's selective ±1 pruning step is not copied yet.
 
 Hypothesis:
 
-- Standard single-bucket bigram hashing wastes capacity on destructive collisions.
+- Standard single-bucket hashed lookup wastes capacity on destructive collisions.
 - Flat multi-order candidate fusion may let the model surface structurally important
   local token combinations without changing the tokenizer.
 - Learned mixing may recover more of the correct local lexical feature without
@@ -47,7 +51,7 @@ EVAL_SEQ_LEN=512 \
 ITERATIONS=20 \
 VAL_LOSS_EVERY=0 \
 TRAIN_LOG_EVERY=5 \
-BIGRAM_DIM=128 \
+NGRAM_DIM=128 \
 NGRAM_ORDERS=2,3,4 \
 NGRAM_VOCAB_SIZES=4096,2048,1024 \
 NGRAM_NUM_HASHES=2,2,2 \
