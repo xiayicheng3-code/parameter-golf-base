@@ -120,8 +120,9 @@ NGRAM_INIT_STD=0.005 \
 WARMDOWN_ITERS=4000 \
 CUDAGRAPH_MICROSTEP=1 \
 CUDAGRAPH_WARMUP_ITERS=3 \
-TRAIN_COMPILE_MODE=none \
+TRAIN_COMPILE_MODE=reduce-overhead \
 EVAL_COMPILE_MODE=default \
+LATE_QAT_THRESHOLD=0 \
 TARGET_MB=15.9 \
 torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```

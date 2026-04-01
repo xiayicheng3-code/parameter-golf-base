@@ -48,7 +48,7 @@ class Hyperparameters:
     grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
     cudagraph_microstep = bool(int(os.environ.get("CUDAGRAPH_MICROSTEP", "1")))
     cudagraph_warmup_iters = int(os.environ.get("CUDAGRAPH_WARMUP_ITERS", 3))
-    train_compile_mode = os.environ.get("TRAIN_COMPILE_MODE", "none" if cudagraph_microstep else "default")
+    train_compile_mode = os.environ.get("TRAIN_COMPILE_MODE", "reduce-overhead" if cudagraph_microstep else "default")
     eval_compile_mode = os.environ.get("EVAL_COMPILE_MODE", "default")
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
@@ -2107,6 +2107,7 @@ def main() -> None:
     # and non-bank grads are manually all-reduced before Adam steps.
     model = compile_with_mode(base_model, args.train_compile_mode)
     compiled_model = model
+    graph_model = model
 
     # Optimizer split:
     # - 4 parameter banks -> Muon (batched Newton-Schulz)
@@ -2231,7 +2232,7 @@ def main() -> None:
     microstep_graph = None
     if args.cudagraph_microstep:
         microstep_graph = StaticMicrostepGraph(
-            base_model,
+            graph_model,
             device,
             micro_batch_shape,
             grad_scale,
@@ -2329,6 +2330,10 @@ def main() -> None:
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
             if microstep_graph is not None:
                 microstep_graph.invalidate()
+                graph_model = compile_with_mode(base_model, args.train_compile_mode)
+                model = graph_model
+                compiled_model = model
+                microstep_graph.model = graph_model
                 microstep_graph.capture()
                 log0("cudagraph_microstep:recaptured_after_late_qat")
         if microstep_graph is not None:
