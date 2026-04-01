@@ -690,6 +690,62 @@ class CausalSelfAttention(nn.Module):
         y = y.reshape(bsz, seqlen, dim)
         return F.linear(y, out_w.to(x.dtype)), raw_v
 
+    def forward_step(
+        self,
+        x: Tensor,
+        q_w: Tensor,
+        k_w: Tensor,
+        v_w: Tensor,
+        out_w: Tensor,
+        kv_cache: tuple[Tensor, Tensor] | None = None,
+        v_embed: Tensor | None = None,
+        v0: Tensor | None = None,
+    ) -> tuple[Tensor, tuple[Tensor, Tensor], Tensor | None]:
+        bsz, seqlen, dim = x.shape
+        if seqlen != 1:
+            raise ValueError(f"forward_step expects seqlen=1, got {seqlen}")
+        q = F.linear(x, q_w.to(x.dtype)).reshape(bsz, seqlen, self.num_heads, self.head_dim)
+        k_new = F.linear(x, k_w.to(x.dtype)).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        v_new = F.linear(x, v_w.to(x.dtype))
+        if v_embed is not None:
+            v_new = v_new + v_embed
+        v_new = v_new.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        raw_v = v_new if self.value_residual else None
+        if self.value_residual and v0 is not None:
+            alpha = torch.sigmoid(self.vrl_alpha.to(dtype=v_new.dtype))
+            v_new = v_new + alpha * v0
+        q = F.rms_norm(q, (q.size(-1),))
+        k_new = F.rms_norm(k_new, (k_new.size(-1),))
+        cache_len = 0 if kv_cache is None else kv_cache[0].size(1)
+        cos, sin = self.rotary(cache_len + 1, x.device, q.dtype)
+        cos = cos[:, cache_len : cache_len + 1]
+        sin = sin[:, cache_len : cache_len + 1]
+        q = apply_rotary_emb(q, cos, sin, self.rope_dims)
+        k_new = apply_rotary_emb(k_new, cos, sin, self.rope_dims)
+        q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
+        if kv_cache is None:
+            k_total = k_new
+            v_total = v_new
+        else:
+            k_total = torch.cat((kv_cache[0], k_new), dim=1)
+            v_total = torch.cat((kv_cache[1], v_new), dim=1)
+        q_attn = q.transpose(1, 2)
+        k_attn = k_total.transpose(1, 2)
+        v_attn = v_total.transpose(1, 2)
+        if self.num_heads != self.num_kv_heads:
+            group = self.num_heads // self.num_kv_heads
+            k_attn = k_attn.repeat_interleave(group, dim=1)
+            v_attn = v_attn.repeat_interleave(group, dim=1)
+        y = F.scaled_dot_product_attention(q_attn, k_attn, v_attn, is_causal=False)
+        y = y.transpose(1, 2)
+        if self.use_xsa:
+            y = self._xsa_efficient(y, v_new)
+        if self.gated_attention:
+            gate = torch.sigmoid(self.attn_gate(x)).unsqueeze(-1)
+            y = y * gate
+        y = y.reshape(bsz, seqlen, dim)
+        return F.linear(y, out_w.to(x.dtype)), (k_total, v_total), raw_v
+
 class SmearGate(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
@@ -798,12 +854,48 @@ class NgramHashEmbedding(nn.Module):
             candidate_ids.append(self.ngram_hash(tokens_i32, order, vocab_size, hashes, group_offset))
         return torch.cat(candidate_ids, dim=-1).long()
 
+    def build_last_candidate_ids(self, token_ids: Tensor) -> Tensor:
+        tokens_i32 = token_ids.to(torch.int32)
+        bsz, seqlen = tokens_i32.shape
+        candidate_ids = []
+        for order, vocab_size, hashes, group_offset in zip(
+            self.ngram_orders, self.ngram_vocab_sizes, self.num_hashes, self.group_offsets
+        ):
+            mod = vocab_size - 1
+            if seqlen < order:
+                ids = torch.full((bsz, hashes), group_offset + mod, device=tokens_i32.device, dtype=torch.int32)
+            else:
+                window = tokens_i32[:, -order:]
+                mixed = torch.zeros(bsz, hashes, device=tokens_i32.device, dtype=torch.int32)
+                hash_a = self.hash_a[:hashes]
+                hash_b = self.hash_b[:hashes]
+                hash_c = self.hash_c[:hashes]
+                for j in range(order):
+                    tok_slice = window[:, order - 1 - j].unsqueeze(-1)
+                    a = (hash_a + 17 * j).view(1, hashes)
+                    b = (hash_b + 29 * j).view(1, hashes)
+                    c = (hash_c + 131 * j).view(1, hashes)
+                    mixed = torch.bitwise_xor(mixed + a * tok_slice + c, b * tok_slice)
+                ids = mixed % mod + group_offset
+            candidate_ids.append(ids.unsqueeze(1))
+        return torch.cat(candidate_ids, dim=-1).long()
+
     def forward(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
         h = self.embed(self.build_candidate_ids(token_ids))
         q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
         order_bias = self.order_gate_bias[self.candidate_order_ids].to(dtype=h.dtype).view(
             *([1] * (h.ndim - 2)), self.total_candidates, 1
         )
+        gate = torch.sigmoid(q * h + order_bias)
+        h = (gate * h).sum(dim=-2)
+        if self.proj is not None:
+            h = self.proj(h)
+        return h * self.scale.to(dtype=h.dtype)
+
+    def forward_last(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
+        h = self.embed(self.build_last_candidate_ids(token_ids))
+        q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
+        order_bias = self.order_gate_bias[self.candidate_order_ids].to(dtype=h.dtype).view(1, 1, self.total_candidates, 1)
         gate = torch.sigmoid(q * h + order_bias)
         h = (gate * h).sum(dim=-2)
         if self.proj is not None:
@@ -876,6 +968,41 @@ class Block(nn.Module):
             gate = torch.sigmoid(self.dtg_gate(x_in.detach()))
             x_out = x_in + gate * (x_out - x_in)
         return x_out, raw_v
+
+    def forward_step(
+        self,
+        x: Tensor,
+        x0: Tensor,
+        q_w: Tensor,
+        k_w: Tensor,
+        v_w: Tensor,
+        out_w: Tensor,
+        up_w: Tensor,
+        down_w: Tensor,
+        kv_cache: tuple[Tensor, Tensor] | None = None,
+        v_embed: Tensor | None = None,
+        v0: Tensor | None = None,
+    ) -> tuple[Tensor, tuple[Tensor, Tensor], Tensor | None]:
+        mix = self.resid_mix.to(dtype=x.dtype)
+        x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+        attn_out, new_cache, raw_v = self.attn.forward_step(
+            self.attn_norm(x_in) * self.ln_scale_factor,
+            q_w,
+            k_w,
+            v_w,
+            out_w,
+            kv_cache=kv_cache,
+            v_embed=v_embed,
+            v0=v0,
+        )
+        x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
+        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(
+            self.mlp_norm(x_out) * self.ln_scale_factor, up_w, down_w
+        )
+        if self.dtg_gate is not None:
+            gate = torch.sigmoid(self.dtg_gate(x_in.detach()))
+            x_out = x_in + gate * (x_out - x_in)
+        return x_out, new_cache, raw_v
 
 class GPT(nn.Module):
     def __init__(
@@ -1031,6 +1158,20 @@ class GPT(nn.Module):
         ve_base = ve_cache['ve'] if ve_cache is not None else self.ve_shared(input_ids)
         ve_idx = self.ve_layer_indices.index(layer_idx)
         return ve_base * self.ve_layer_scales[ve_idx].to(dtype=ve_base.dtype)
+
+    def _apply_input_features_step(
+        self,
+        current_token_ids: Tensor,
+        recent_token_ids: Tensor,
+        prev_pre_smear: Tensor | None,
+    ) -> tuple[Tensor, Tensor]:
+        x = self.tok_emb(current_token_ids)
+        if self.ngram is not None:
+            x = x + self.ngram.forward_last(recent_token_ids, x)
+        x = F.rms_norm(x, (x.size(-1),))
+        g = torch.sigmoid(self.smear.gate.to(dtype=x.dtype))[None, None, :]
+        x_prev = torch.zeros_like(x) if prev_pre_smear is None else prev_pre_smear
+        return (1 - g) * x + g * x_prev, x
     def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
         n = self.num_layers
         x = self.tok_emb(input_ids)
@@ -1125,6 +1266,70 @@ class GPT(nn.Module):
             logits_proj = self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
 
+    def forward_next_logits_cached(
+        self,
+        current_token_ids: Tensor,
+        recent_token_ids: Tensor,
+        kv_caches: list[tuple[Tensor, Tensor] | None] | None = None,
+        prev_pre_smear: Tensor | None = None,
+    ) -> tuple[Tensor, list[tuple[Tensor, Tensor]], Tensor]:
+        if current_token_ids.ndim != 2 or current_token_ids.size(1) != 1:
+            raise ValueError(f"current_token_ids must have shape [B,1], got {tuple(current_token_ids.shape)}")
+        n = self.num_layers
+        if kv_caches is None:
+            kv_caches = [None] * n
+        x, pre_smear = self._apply_input_features_step(current_token_ids, recent_token_ids, prev_pre_smear)
+        x0 = x
+        v0 = None
+        skips: list[Tensor] = []
+        new_caches: list[tuple[Tensor, Tensor]] = []
+        ve_cache: dict = {}
+        for i in range(self.num_encoder_layers):
+            ve = self._get_ve(i, current_token_ids, ve_cache)
+            x, layer_cache, raw_v = self.blocks[i].forward_step(
+                x,
+                x0,
+                self.qo_bank[i],
+                self.kv_bank[i],
+                self.kv_bank[n + i],
+                self.qo_bank[n + i],
+                self.mlp_up_bank[i],
+                self.mlp_down_bank[i],
+                kv_cache=kv_caches[i],
+                v_embed=ve,
+                v0=v0,
+            )
+            if v0 is None and raw_v is not None:
+                v0 = raw_v
+            skips.append(x)
+            new_caches.append(layer_cache)
+        for i in range(self.num_decoder_layers):
+            bi = self.num_encoder_layers + i
+            if skips:
+                x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+            ve = self._get_ve(bi, current_token_ids, ve_cache)
+            x, layer_cache, _ = self.blocks[bi].forward_step(
+                x,
+                x0,
+                self.qo_bank[bi],
+                self.kv_bank[bi],
+                self.kv_bank[n + bi],
+                self.qo_bank[n + bi],
+                self.mlp_up_bank[bi],
+                self.mlp_down_bank[bi],
+                kv_cache=kv_caches[bi],
+                v_embed=ve,
+                v0=v0,
+            )
+            new_caches.append(layer_cache)
+        x = self.final_norm(x)
+        if self.tie_embeddings:
+            logits_proj = F.linear(x[:, -1, :], self.tok_emb.weight)
+        else:
+            logits_proj = self.lm_head(x[:, -1, :])
+        logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+        return logits, new_caches, pre_smear
+
 # --- Sliding window evaluation ---
 
 def eval_val_sliding(
@@ -1205,23 +1410,30 @@ def generate_autoregressive_calib(model, device, num_seqs=64, seq_len=2048,
     model.eval()
     rng = torch.Generator(device=device)
     rng.manual_seed(seed)
-    all_tokens = []
+    all_tokens = torch.empty(num_seqs, seq_len, device=device, dtype=torch.int64)
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for batch_start in range(0, num_seqs, batch_size):
             bs = min(batch_size, num_seqs - batch_start)
             tokens = torch.randint(0, vocab_size, (bs, 1), device=device, generator=rng)
-            for pos in range(seq_len - 1):
-                logits = model.forward_logits(tokens)
-                next_logit = logits[:, -1, :]
+            kv_caches = None
+            prev_pre_smear = None
+            recent_tokens = tokens
+            for _ in range(seq_len - 1):
+                next_logit, kv_caches, prev_pre_smear = model.forward_next_logits_cached(
+                    tokens[:, -1:],
+                    recent_tokens,
+                    kv_caches=kv_caches,
+                    prev_pre_smear=prev_pre_smear,
+                )
                 probs = torch.softmax(next_logit / temperature, dim=-1)
                 next_tok = torch.multinomial(probs, 1, generator=rng)
                 tokens = torch.cat([tokens, next_tok], dim=1)
-            for i in range(bs):
-                all_tokens.append(tokens[i:i+1])
+                recent_tokens = tokens[:, -max(model.ngram.ngram_orders):] if model.ngram is not None else tokens[:, -1:]
+            all_tokens[batch_start : batch_start + bs] = tokens
     return all_tokens
 
 
-def collect_hessians_from_tokens(hessian_model, token_seqs, device):
+def collect_hessians_from_tokens(hessian_model, token_seqs, device, batch_size=8):
     """Collect H = X^T X from pre-generated token sequences."""
     hessians = {}
     hooks = []
@@ -1241,13 +1453,18 @@ def collect_hessians_from_tokens(hessian_model, token_seqs, device):
             hooks.append(h)
     hessian_model.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        for seq in token_seqs:
+        if isinstance(token_seqs, list):
+            token_batches = torch.cat(token_seqs, dim=0)
+        else:
+            token_batches = token_seqs
+        for start in range(0, token_batches.size(0), batch_size):
+            seq = token_batches[start : start + batch_size]
             x = seq[:, :-1].to(device)
             y = seq[:, 1:].to(device)
             hessian_model(x, y)
     for h in hooks:
         h.remove()
-    num_batches = len(token_seqs)
+    num_batches = token_batches.size(0)
     for name in hessians:
         H = hessians[name]
         H /= num_batches
