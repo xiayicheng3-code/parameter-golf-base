@@ -576,6 +576,7 @@ class StaticMicrostepGraph:
         self.static_x = torch.zeros(micro_batch_shape, device=device, dtype=torch.int64)
         self.static_y = torch.zeros_like(self.static_x)
         self.graph = torch.cuda.CUDAGraph()
+        self.stream = torch.cuda.Stream(device=device)
         self.loss: Tensor | None = None
         self._captured = False
         self._params = [p for p in model.parameters() if p.requires_grad]
@@ -589,17 +590,16 @@ class StaticMicrostepGraph:
         if self._captured:
             return
         self.model.train()
-        warmup_stream = torch.cuda.Stream(device=self.device)
-        warmup_stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(warmup_stream):
+        self.stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(self.stream):
             for _ in range(self.warmup_iters):
                 self._zero_grads_inplace()
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True, cache_enabled=False):
                     loss = self.model(self.static_x, self.static_y)
                 (loss * self.grad_scale).backward()
             self._zero_grads_inplace()
-        torch.cuda.current_stream().wait_stream(warmup_stream)
-        with torch.cuda.graph(self.graph):
+        torch.cuda.current_stream().wait_stream(self.stream)
+        with torch.cuda.graph(self.graph, stream=self.stream):
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True, cache_enabled=False):
                 self.loss = self.model(self.static_x, self.static_y)
             (self.loss * self.grad_scale).backward()
@@ -2226,32 +2226,6 @@ def main() -> None:
         warmdown_ms = args.warmdown_iters * step_ms
         remaining_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return remaining_ms / max(warmdown_ms, 1e-9) if remaining_ms <= warmdown_ms else 1.0
-    if args.warmup_steps > 0:
-        initial_model_state = {name: tensor.detach().cpu().clone() for name, tensor in base_model.state_dict().items()}
-        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
-        model.train()
-        for warmup_step in range(args.warmup_steps):
-            zero_grad_all()
-            for micro_step in range(grad_accum_steps):
-                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
-                    warmup_loss = model(x, y)
-                (warmup_loss * grad_scale).backward()
-            # All-reduce all grads for warmup (simple, not optimized)
-            if distributed:
-                for p in base_model.parameters():
-                    if p.grad is not None:
-                        dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
-            for opt in optimizers:
-                opt.step()
-            zero_grad_all()
-            if args.warmup_steps <= 20 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == args.warmup_steps:
-                log0(f"warmup_step:{warmup_step + 1}/{args.warmup_steps}")
-        base_model.load_state_dict(initial_model_state, strict=True)
-        for opt, state in zip(optimizers, initial_optimizer_states, strict=True):
-            opt.load_state_dict(state)
-        zero_grad_all()
-        train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     micro_batch_tokens = args.train_batch_tokens // (world_size * grad_accum_steps)
     micro_batch_shape = (micro_batch_tokens // args.train_seq_len, args.train_seq_len)
     microstep_graph = None
@@ -2268,6 +2242,44 @@ def main() -> None:
             f"cudagraph_microstep:capture_complete micro_batch_shape:{micro_batch_shape} "
             f"warmup_iters:{args.cudagraph_warmup_iters}"
         )
+    if args.warmup_steps > 0:
+        initial_model_state = {name: tensor.detach().cpu().clone() for name, tensor in base_model.state_dict().items()}
+        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
+        model.train()
+        for warmup_step in range(args.warmup_steps):
+            if microstep_graph is not None:
+                microstep_graph.zero_grads()
+            else:
+                zero_grad_all()
+            for micro_step in range(grad_accum_steps):
+                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+                if microstep_graph is not None:
+                    warmup_loss = microstep_graph.replay(x, y)
+                else:
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                        warmup_loss = model(x, y)
+                    (warmup_loss * grad_scale).backward()
+            # All-reduce all grads for warmup (simple, not optimized)
+            if distributed:
+                for p in base_model.parameters():
+                    if p.grad is not None:
+                        dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+            for opt in optimizers:
+                opt.step()
+            if microstep_graph is not None:
+                microstep_graph.zero_grads()
+            else:
+                zero_grad_all()
+            if args.warmup_steps <= 20 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == args.warmup_steps:
+                log0(f"warmup_step:{warmup_step + 1}/{args.warmup_steps}")
+        base_model.load_state_dict(initial_model_state, strict=True)
+        for opt, state in zip(optimizers, initial_optimizer_states, strict=True):
+            opt.load_state_dict(state)
+        if microstep_graph is not None:
+            microstep_graph.zero_grads()
+        else:
+            zero_grad_all()
+        train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     swa_state: dict[str, Tensor] | None = None
     swa_count = 0
     from collections import deque
