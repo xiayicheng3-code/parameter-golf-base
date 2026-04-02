@@ -2366,7 +2366,10 @@ def main() -> None:
     # NOVEL: Selective ±1 pruning by reconstruction error
     # Sort ±1 quantized values by their reconstruction error (scale²),
     # prune least-impactful first until artifact fits target size.
-    target_mb = float(os.environ.get("TARGET_MB", "15.9"))
+    # Challenge cap is 16,000,000 decimal bytes total, while this code uses
+    # MiB-style accounting internally for the pruning target. Default to a safe
+    # value below the true cap instead of the old overly-loose 15.9 MiB.
+    target_mb = float(os.environ.get("TARGET_MB", "15.24"))
     code_bytes_est = len(code.encode("utf-8"))
     ones_info = []  # (tensor_key, flat_idx, error)
     for name, info in quant_meta.items():
