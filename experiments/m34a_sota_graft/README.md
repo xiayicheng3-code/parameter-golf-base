@@ -122,7 +122,7 @@ NGRAM_NUM_HASHES=2,2,2 \
 WARMDOWN_ITERS=4000 \
 TARGET_MB=15.24 \
 GRAD_ACCUM_STEPS=1 \
-TRAIN_BATCH_TOKENS=786432 \
+TRAIN_BATCH_TOKENS=524288 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
@@ -137,8 +137,38 @@ has already been modified to reduce obvious post-training overhead:
 - autoregressive calibration generation now uses an incremental cached decode path
 - Hessian collection now supports batched token sequences instead of one sequence
   per forward
+- GPTQ calibration now exposes `GPTQ_AR_NUM_SEQS`, `GPTQ_AR_BATCH_SIZE`,
+  `GPTQ_HESSIAN_BATCH_SIZE`, `GPTQ_AR_TEMPERATURE`, and `GPTQ_BLOCK_SIZE`
+- AR diagnostics are enabled by default and can be controlled via
+  `GPTQ_AR_PRINT_SEQUENCES` and `GPTQ_AR_PRINT_MAX_CHARS`
+- default behavior is to print the first `10` generated sequences, with up to
+  `2048` characters shown per sequence
+- current defaults are intentionally more aggressive on Hopper-class GPUs:
+  `GPTQ_AR_BATCH_SIZE=16` and `GPTQ_HESSIAN_BATCH_SIZE=16`
 
 This area is still under active optimization.
+
+## Fix Logs
+
+This branch has already gone through a few nontrivial implementation fixes that
+materially affect how old logs should be interpreted.
+
+1. `TARGET_MB` default was corrected from a loose MiB-style value to a safe
+   default of `15.24`.
+   Earlier runs could appear to "fit" the target while still exceeding the
+   challenge's true decimal `16,000,000` byte limit.
+
+2. The original Dual-Match gate implementation drifted away from the intended
+   design.
+   It had accidentally become a feature-wise gate of shape `[batch, token,
+   num_hash, dim]`, which means each candidate was being modulated
+   per-channel rather than receiving a single scalar gate.
+   The intended design is a scalar-per-hash gate:
+   each candidate first gets one scalar compatibility score, then that scalar
+   is passed through `sigmoid`, and only then is the candidate mixed into the
+   residual stream.
+   This fix is important enough that logs from before it should not be treated
+   as faithful evaluations of the intended M34a design.
 
 ## Known Caveats
 

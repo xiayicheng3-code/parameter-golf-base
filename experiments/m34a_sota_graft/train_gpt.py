@@ -114,7 +114,12 @@ class Hyperparameters:
     gated_attention = bool(int(os.environ.get("GATED_ATTENTION", "0")))
     value_residual = bool(int(os.environ.get("VALUE_RESIDUAL", "0")))  # VRL with sigmoid gates (off by default, risky)
     # GPTQ calibration
-    gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 256))
+    gptq_ar_num_seqs = int(os.environ.get("GPTQ_AR_NUM_SEQS", 64))
+    gptq_ar_batch_size = int(os.environ.get("GPTQ_AR_BATCH_SIZE", 16))
+    gptq_hessian_batch_size = int(os.environ.get("GPTQ_HESSIAN_BATCH_SIZE", 16))
+    gptq_ar_temperature = float(os.environ.get("GPTQ_AR_TEMPERATURE", 0.8))
+    gptq_ar_print_sequences = int(os.environ.get("GPTQ_AR_PRINT_SEQUENCES", 10))
+    gptq_ar_print_max_chars = int(os.environ.get("GPTQ_AR_PRINT_MAX_CHARS", 2048))
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
 
 # --- Batched Newton-Schulz orthogonalization ---
@@ -880,13 +885,30 @@ class NgramHashEmbedding(nn.Module):
             candidate_ids.append(ids.unsqueeze(1))
         return torch.cat(candidate_ids, dim=-1).long()
 
+    def build_order_top1_mask(self, score: Tensor) -> Tensor:
+        masks = []
+        start = 0
+        for hashes in self.num_hashes:
+            stop = start + hashes
+            order_score = score[..., start:stop]
+            top_idx = order_score.argmax(dim=-1, keepdim=True)
+            order_mask = torch.zeros_like(order_score, dtype=score.dtype)
+            order_mask.scatter_(-1, top_idx, 1.0)
+            masks.append(order_mask)
+            start = stop
+        return torch.cat(masks, dim=-1)
+
     def forward(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
         h = self.embed(self.build_candidate_ids(token_ids))
         q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
         order_bias = self.order_gate_bias[self.candidate_order_ids].to(dtype=h.dtype).view(
-            *([1] * (h.ndim - 2)), self.total_candidates, 1
+            *([1] * (h.ndim - 2)), self.total_candidates
         )
-        gate = torch.sigmoid(q * h + order_bias)
+        # Use a true scalar-per-hash compatibility score instead of a
+        # feature-wise gate. This keeps the routing decision at the hash-slot
+        # level, which matches the intended "one gate per candidate" design.
+        score = (q * h).sum(dim=-1) / math.sqrt(h.size(-1)) + order_bias
+        gate = (torch.sigmoid(score) * self.build_order_top1_mask(score)).unsqueeze(-1)
         h = (gate * h).sum(dim=-2)
         if self.proj is not None:
             h = self.proj(h)
@@ -895,8 +917,9 @@ class NgramHashEmbedding(nn.Module):
     def forward_last(self, token_ids: Tensor, token_embed: Tensor) -> Tensor:
         h = self.embed(self.build_last_candidate_ids(token_ids))
         q = self.q_proj(token_embed).to(dtype=h.dtype).unsqueeze(-2)
-        order_bias = self.order_gate_bias[self.candidate_order_ids].to(dtype=h.dtype).view(1, 1, self.total_candidates, 1)
-        gate = torch.sigmoid(q * h + order_bias)
+        order_bias = self.order_gate_bias[self.candidate_order_ids].to(dtype=h.dtype).view(1, 1, self.total_candidates)
+        score = (q * h).sum(dim=-1) / math.sqrt(h.size(-1)) + order_bias
+        gate = (torch.sigmoid(score) * self.build_order_top1_mask(score)).unsqueeze(-1)
         h = (gate * h).sum(dim=-2)
         if self.proj is not None:
             h = self.proj(h)
@@ -1433,6 +1456,29 @@ def generate_autoregressive_calib(model, device, num_seqs=64, seq_len=2048,
     return all_tokens
 
 
+def log_autoregressive_calib_sequences(
+    log0,
+    sp: spm.SentencePieceProcessor,
+    token_seqs: Tensor,
+    max_sequences: int,
+    max_chars: int = 0,
+) -> None:
+    token_seqs_cpu = token_seqs.detach().cpu()
+    total = token_seqs_cpu.size(0)
+    num_to_print = total if max_sequences <= 0 else min(total, max_sequences)
+    log0(
+        f"gptq:autoregressive_calibration_sequences count={total} "
+        f"showing={num_to_print}"
+    )
+    for idx in range(num_to_print):
+        ids = token_seqs_cpu[idx].tolist()
+        text = sp.decode_ids(ids)
+        text = text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+        if max_chars > 0 and len(text) > max_chars:
+            text = text[:max_chars] + "...<truncated>"
+        log0(f"gptq:ar_seq[{idx}] {text}")
+
+
 def collect_hessians_from_tokens(hessian_model, token_seqs, device, batch_size=8):
     """Collect H = X^T X from pre-generated token sequences."""
     hessians = {}
@@ -1842,7 +1888,12 @@ def collect_hessians(hessian_model, train_loader, args, device, grad_accum_steps
     hessian_model.train()
     return hessians
 
-def mixed_quantize_int6(state_dict: dict[str, Tensor], int6_cats: set[str], hessians: dict[str, Tensor] | None = None):
+def mixed_quantize_int6(
+    state_dict: dict[str, Tensor],
+    int6_cats: set[str],
+    hessians: dict[str, Tensor] | None = None,
+    gptq_block_size: int = 128,
+):
     num_layers_total = max(
         (int(k.split(".")[1]) for k in state_dict if k.startswith("blocks.")),
         default=0,
@@ -1865,7 +1916,7 @@ def mixed_quantize_int6(state_dict: dict[str, Tensor], int6_cats: set[str], hess
             cr = 31  # int6 for all weights
             H = hessians.get(name) if hessians else None
             if H is not None:
-                q, s = quantize_int6_gptq(t, hessian=H, clip_range=cr)
+                q, s = quantize_int6_gptq(t, hessian=H, clip_range=cr, block_size=gptq_block_size)
             else:
                 q, s = quantize_int6_per_row(t, clip_range=cr)
             result[name + ".q"] = q
@@ -2348,21 +2399,52 @@ def main() -> None:
         strict=False,
     )
     # Autoregressive self-generated calibration (no external data)
-    log0("gptq:generating autoregressive calibration data (64 seqs x 2048 tokens, temp=0.8)...")
+    log0(
+        "gptq:generating autoregressive calibration data "
+        f"({args.gptq_ar_num_seqs} seqs x {args.train_seq_len} tokens, "
+        f"temp={args.gptq_ar_temperature}, batch={args.gptq_ar_batch_size})..."
+    )
     base_model.load_state_dict(export_sd, strict=False)
     t_gen = time.perf_counter()
     ar_tokens = generate_autoregressive_calib(
-        base_model, device, num_seqs=64, seq_len=args.train_seq_len,
-        vocab_size=args.vocab_size, temperature=0.8, batch_size=8, seed=args.seed,
+        base_model,
+        device,
+        num_seqs=args.gptq_ar_num_seqs,
+        seq_len=args.train_seq_len,
+        vocab_size=args.vocab_size,
+        temperature=args.gptq_ar_temperature,
+        batch_size=args.gptq_ar_batch_size,
+        seed=args.seed,
     )
     log0(f"gptq:generated {len(ar_tokens)} sequences in {time.perf_counter()-t_gen:.1f}s")
-    log0("gptq:collecting hessians from autoregressive data...")
-    hessians = collect_hessians_from_tokens(hessian_model, ar_tokens, device)
+    if args.gptq_ar_print_sequences != 0:
+        log_autoregressive_calib_sequences(
+            log0,
+            sp,
+            ar_tokens,
+            max_sequences=args.gptq_ar_print_sequences,
+            max_chars=args.gptq_ar_print_max_chars,
+        )
+    log0(
+        "gptq:collecting hessians from autoregressive data "
+        f"(batch={args.gptq_hessian_batch_size})..."
+    )
+    hessians = collect_hessians_from_tokens(
+        hessian_model,
+        ar_tokens,
+        device,
+        batch_size=args.gptq_hessian_batch_size,
+    )
     log0(f"gptq:collected hessians for {len(hessians)} layers (AR self-gen)")
     del ar_tokens
     del hessian_model
     torch.cuda.empty_cache()
-    quant_result, quant_meta = mixed_quantize_int6(unbanked_sd, {"mlp", "attn"}, hessians=hessians)
+    quant_result, quant_meta = mixed_quantize_int6(
+        unbanked_sd,
+        {"mlp", "attn"},
+        hessians=hessians,
+        gptq_block_size=args.gptq_block_size,
+    )
     # NOVEL: Selective ±1 pruning by reconstruction error
     # Sort ±1 quantized values by their reconstruction error (scale²),
     # prune least-impactful first until artifact fits target size.
