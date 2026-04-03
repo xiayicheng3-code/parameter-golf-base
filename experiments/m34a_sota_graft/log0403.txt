@@ -1,0 +1,218 @@
+_____                             _
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |
+                  |_|
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@0881890349e2:/workspace/parameter-golf# cd /workspace
+root@0881890349e2:/workspace# git clone https://github.com/xiayicheng3-code/parameter-golf-base.git || true
+fatal: destination path 'parameter-golf-base' already exists and is not an empty directory.
+root@0881890349e2:/workspace# cd /workspace/parameter-golf-base
+root@0881890349e2:/workspace/parameter-golf-base# git fetch origin
+root@0881890349e2:/workspace/parameter-golf-base# git pull --ff-only
+Already up to date.
+root@0881890349e2:/workspace/parameter-golf-base#
+root@0881890349e2:/workspace/parameter-golf-base# python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+datasets/tokenizers/fineweb_1024_bpe.mod(…): 100%|███████████████████████████████████████████████| 254k/254k [00:01<00:00, 251kB/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+fineweb_1024_bpe.vocab: 9.86kB [00:00, 39.3MB/s]
+root@0881890349e2:/workspace/parameter-golf-base#
+root@0881890349e2:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@0881890349e2:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_2x4090_batchmatch_524288_s80 \> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> VOCAB_SIZE=1024 \
+> NUM_LAYERS=11 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=3.0 \
+> TRAIN_SEQ_LEN=2048 \
+> EVAL_SEQ_LEN=2048 \
+> TRAIN_BATCH_TOKENS=524288 \
+> GRAD_ACCUM_STEPS=4 \
+> VAL_BATCH_SIZE=2097152 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_BASE_VOCAB_SIZE=3072 \
+> NGRAM_DIM=112 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=3072,1536,768 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_INIT_STD=0.005 \
+> WARMDOWN_ITERS=4000 \
+> TARGET_MB=15.24 \
+> torchrun --standalone --nproc_per_node=2 train_gpt.py
+W0403 13:59:28.585000 612 torch/distributed/run.py:803]
+W0403 13:59:28.585000 612 torch/distributed/run.py:803] *****************************************
+W0403 13:59:28.585000 612 torch/distributed/run.py:803] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+W0403 13:59:28.585000 612 torch/distributed/run.py:803] *****************************************
+logs/m34a_sota_graft_2x4090_batchmatch_524288_s80.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:21
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:27382879
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_11 active_layers:[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+world_size:2 grad_accum_steps:4
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025
+train_batch_tokens:524288 train_seq_len:2048 micro_batch_tokens:65536 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9309 train_time:715ms step_avg:714.91ms
+step:2/20000 train_loss:8.7572 train_time:1312ms step_avg:656.17ms
+step:3/20000 train_loss:8.3826 train_time:2022ms step_avg:674.09ms
+step:4/20000 train_loss:7.8388 train_time:2733ms step_avg:683.13ms
+step:5/20000 train_loss:7.2792 train_time:3442ms step_avg:688.48ms
+step:6/20000 train_loss:6.9096 train_time:4152ms step_avg:692.07ms
+step:7/20000 train_loss:6.4339 train_time:4862ms step_avg:694.63ms
+step:8/20000 train_loss:6.2547 train_time:5573ms step_avg:696.57ms
+step:9/20000 train_loss:6.0465 train_time:6283ms step_avg:698.08ms
+step:10/20000 train_loss:5.9079 train_time:6994ms step_avg:699.37ms
+step:25/20000 train_loss:5.4876 train_time:17655ms step_avg:706.21ms
+swa:start step:50
+step:50/20000 train_loss:4.5460 train_time:35454ms step_avg:709.07ms
+step:75/20000 train_loss:3.9392 train_time:53354ms step_avg:711.38ms
+step:100/20000 train_loss:3.6496 train_time:71193ms step_avg:711.93ms
+step:125/20000 train_loss:3.3968 train_time:89092ms step_avg:712.74ms
+step:150/20000 train_loss:3.2917 train_time:106937ms step_avg:712.91ms
+step:175/20000 train_loss:3.0994 train_time:124834ms step_avg:713.34ms
+step:200/20000 train_loss:2.9966 train_time:142680ms step_avg:713.40ms
+step:225/20000 train_loss:2.9682 train_time:160577ms step_avg:713.68ms
+late_qat:enabled step:241 scale:0.1498
+step:250/20000 train_loss:2.9267 train_time:178424ms step_avg:713.70ms
+step:275/20000 train_loss:2.8271 train_time:196322ms step_avg:713.90ms
+step:300/20000 train_loss:2.7161 train_time:214168ms step_avg:713.89ms
+step:325/20000 train_loss:2.7457 train_time:232064ms step_avg:714.04ms
+step:350/20000 train_loss:2.7107 train_time:249909ms step_avg:714.03ms
+step:375/20000 train_loss:2.7260 train_time:267805ms step_avg:714.15ms
+step:400/20000 train_loss:2.4524 train_time:285648ms step_avg:714.12ms
+step:425/20000 train_loss:2.6041 train_time:303543ms step_avg:714.22ms
+step:450/20000 train_loss:2.5439 train_time:321386ms step_avg:714.19ms
+step:475/20000 train_loss:2.5897 train_time:339281ms step_avg:714.28ms
+step:500/20000 train_loss:2.5234 train_time:357123ms step_avg:714.25ms
+step:525/20000 train_loss:2.6258 train_time:375019ms step_avg:714.32ms
+step:550/20000 train_loss:2.3712 train_time:392860ms step_avg:714.29ms
+step:575/20000 train_loss:2.4801 train_time:410780ms step_avg:714.40ms
+step:600/20000 train_loss:2.5662 train_time:428621ms step_avg:714.37ms
+step:625/20000 train_loss:2.4956 train_time:446513ms step_avg:714.42ms
+step:650/20000 train_loss:2.3951 train_time:464354ms step_avg:714.39ms
+step:675/20000 train_loss:2.3415 train_time:482246ms step_avg:714.44ms
+step:700/20000 train_loss:2.4712 train_time:500087ms step_avg:714.41ms
+step:725/20000 train_loss:2.4760 train_time:517979ms step_avg:714.45ms
+step:750/20000 train_loss:2.4056 train_time:535820ms step_avg:714.43ms
+step:775/20000 train_loss:2.5033 train_time:553712ms step_avg:714.47ms
+step:800/20000 train_loss:2.3573 train_time:571564ms step_avg:714.45ms
+step:825/20000 train_loss:2.4566 train_time:589458ms step_avg:714.49ms
+step:840/20000 val_loss:2.4155 val_bpb:1.4306 train_time:600285ms step_avg:714.63ms
+stopping_early: wallclock_cap train_time:600285ms step:840/20000
+peak memory allocated: 15569 MiB reserved: 19636 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.7869 val_bpb:1.6505 eval_time:24995ms
+Serialized model: 107035704 bytes
+Code size: 121998 bytes
+gptq:building non-banked model for Hessian collection...
+gptq:generating autoregressive calibration data (64 seqs x 2048 tokens, temp=0.8, batch=16)...
+gptq:generated 64 sequences in 48.9s
+gptq:autoregressive_calibration_sequences count=64 showing=10
+gptq:ar_seq[0] one. This was a a crrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr...<truncated>
+gptq:ar_seq[1] at. The singinging of the rain was was not a singinginging. A collection of models can not turn on on on! Scientifically, these online paddyyyyyy is not perfectly good in any other service. One successful singinging of the rest of the seeded singing of the presentation are irony. An an anxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...<truncated>
+gptq:ar_seq[2] 0000302111322500000000000000000000000000000000000000000000000000000,00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000100000000000005000000000000000-2245555000000000000000000000000000000000000000000000000000004000000-00000001000000000000000000000004000000000000000000050000900000000000000000000000001000200000000000000000000000000000000000000000000100000000000000000000060000000001000000000000000000079500000000000010000000000000000000000000000000000s00000000000070000000000000000000P0000000400000000000000000008000000000000000000000000000000000000000000090000000000000000001000000000000000000000000,0000000001000000000000000000010000000900000000000950000000000000000000000000200000000000000000000000000000000000000000000000100007012372570000000000000000000000000000000000000000000000000000000010300000000000000000000000000000000000000000000 and other features that performance of the company erstanding the broad and initially erstandard of the autohyddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd...<truncated>
+gptq:ar_seq[3] m m forms and. The comparison approach churossssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssessssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssinssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss tsssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss issuessssssssssss onssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss -sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss tosssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss...<truncated>
+gptq:ar_seq[4] �� M. The M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M.. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M.M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. C. M. M. M. M. M. M. M. M. M. M. C. M. M. M.M. M. M. M. M. M. M. M. M. M. M. M. M. M. P. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. H. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. Th. M. M. M. M. C. M. M. M. M. M. M. M. M. M. M. M. M. M. M.M. M. M. M. M. M. S. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. M. D. M. M. M. M. M. M. M. M. M. M. M. N. M. Uss. M. M. M. M. M. M. M. M. M. M. M. W. M. M. M. M. C. M. M. M. T. M. M. M. M. M. M. Maxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...<truncated>
+gptq:ar_seq[5] ores a wide variety of TVSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSDSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSBSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSESSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSESSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSSTSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSGSSSSSSSSSSSNSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSCSSSSSSSSSSSSSSSSSSSSSASSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSCSSSSSSSSNSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSTSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSASSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSRSSSSSSSSSSSSSSSSSSSASSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSSSSSSSSSSSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSLSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSMSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS...<truncated>
+gptq:ar_seq[6] ). It's 33588100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000800A02000000000000000000000000000000000000000000000000000000000000000/000000:00000090000000000000000000000000ct000000000000000000000000000100005000010000000000000000800000000000000000000000000000000000100000100000000000000000000000000000000000000000000000010000000000300000000000000000000000000000000000000000002150000000000000000050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000900000000000000000000000000000000000000000000000000000017000000000000000000000000300000000000000000000010000000000000s000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000/000010000000000000020000000000050000000000000000000000020000s00000000000000000000000000000)0000000000000000000000001000010300000000000010000000000000000000000000000010000000000000000000000000�392220000000000000000000000000000010000000000000000080s000000000000004000000000000090000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000 d0000000000100000000010030000000000000000000000002000000000000000000000000000000000000000000100000004000000000000000000001000000000000000000000400000008000000000000000000000000000090000000000050000000400000300000000000000000000000000800500000000000000000000000000000000000000000T18000000000010000000000000000000000000007000090000000000000000001000000000000400000000,0000000000050000010000000007000000000000000000000000000000,0000s00000000000000000000000000100000000000000000100000000000000000000...<truncated>
+gptq:ar_seq[7] church, and, by the bonding singing. God led him by the bonding thing. The man, who is being, and in his mind, and the one my friends, and the other thing, fearing the bonding. When two things quality----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------,------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------1------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ e----------------------------------------------------...<truncated>
+gptq:ar_seq[8] ibility to the TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTMTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTSTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTETTTTTMTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTETTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTCTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTHTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTPTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTSTTTTTTTTTTTTTTTTTTTTRTTTTTTTTTTTTTTTTTTTTTTTTPTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTHTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTBTTTTTTTTTTTTTTTSTTTTTTTTTTTTETTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTWTTTTTYTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTSTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTVTTTTTTTTTTTTTTTTITTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTRTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLTTTTETTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTLTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTETTTTTTTTTTTTTTCTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT...<truncated>
+gptq:ar_seq[9] ��������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������
+gptq:collecting hessians from autoregressive data (batch=16)...
+gptq:collected hessians for 69 layers (AR self-gen)
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 2593, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 2442, in main
+[rank0]:     quant_result, quant_meta = mixed_quantize_int6(
+[rank0]:                                ^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 1919, in mixed_quantize_int6
+[rank0]:     q, s = quantize_int6_gptq(t, hessian=H, clip_range=cr, block_size=gptq_block_size)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 1571, in quantize_int6_gptq
+[rank0]:     Hinv = torch.linalg.cholesky(H)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: torch._C._LinAlgError: linalg.cholesky: The factorization could not be completed because the input is not positive-definite (the leading minor of order 498 is not positive-definite).
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 2593, in <module>
+[rank1]:     main()
+[rank1]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 2442, in main
+[rank1]:     quant_result, quant_meta = mixed_quantize_int6(
+[rank1]:                                ^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 1919, in mixed_quantize_int6
+[rank1]:     q, s = quantize_int6_gptq(t, hessian=H, clip_range=cr, block_size=gptq_block_size)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/workspace/parameter-golf-base/experiments/m34a_sota_graft/train_gpt.py", line 1571, in quantize_int6_gptq
+[rank1]:     Hinv = torch.linalg.cholesky(H)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]: torch._C._LinAlgError: linalg.cholesky: The factorization could not be completed because the input is not positive-definite (the leading minor of order 453 is not positive-definite).
+[rank0]:[W403 14:12:49.736989634 ProcessGroupNCCL.cpp:1524] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+W0403 14:12:49.876000 612 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 648 closing signal SIGTERM
+E0403 14:12:50.140000 612 torch/distributed/elastic/multiprocessing/api.py:882] failed (exitcode: 1) local_rank: 1 (pid: 649) of binary: /usr/local/bin/python
+Traceback (most recent call last):
+  File "/usr/local/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 293, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+train_gpt.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-04-03_14:12:49
+  host      : 0881890349e2
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 649)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+root@0881890349e2:/workspace/parameter-golf-base/experiments/m34a_sota_graft#

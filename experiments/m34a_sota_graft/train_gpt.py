@@ -87,6 +87,7 @@ class Hyperparameters:
     qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
     ngram_base_vocab_size = int(os.environ.get("NGRAM_BASE_VOCAB_SIZE", 2048))
     ngram_dim = int(os.environ.get("NGRAM_DIM", 128))
+    ngram_wd = float(os.environ.get("NGRAM_WD", 1e-4))
     ngram_orders = parse_int_csv(os.environ.get("NGRAM_ORDERS", "2,3,4"))
     ngram_vocab_sizes = parse_int_csv(
         os.environ.get(
@@ -1514,8 +1515,13 @@ def collect_hessians_from_tokens(hessian_model, token_seqs, device, batch_size=8
     for name in hessians:
         H = hessians[name]
         H /= num_batches
+        # X^T X should be symmetric PSD, but finite-precision accumulation and
+        # heavily collapsed AR calibration sequences can make it slightly
+        # asymmetric or numerically rank-deficient. Symmetrize first, then add
+        # the usual diagonal damping.
+        H = 0.5 * (H + H.T)
         damp = 0.01 * torch.diag(H).mean().clamp_min(1e-6)
-        H += damp * torch.eye(H.shape[0])
+        H += damp * torch.eye(H.shape[0], dtype=H.dtype, device=H.device)
         hessians[name] = H
     return hessians
 
@@ -1551,14 +1557,62 @@ def quantize_int6_per_row(t: Tensor, clip_range: int = 31) -> tuple[Tensor, Tens
     q = torch.clamp(torch.round(t32 / scale.float()), -clip_range, clip_range).to(torch.int8)
     return q, scale
 
-def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
+def _stable_upper_cholesky_from_hessian(H: Tensor, base_damp: Tensor) -> tuple[Tensor | None, dict[str, float | int | None]]:
+    """Return an upper-triangular factor of H^{-1}, or None if stabilization fails.
+
+    GPTQ expects a positive-definite Hessian approximation. In practice, the
+    collected X^T X matrix can become only semidefinite or slightly indefinite
+    when calibration activations collapse. We therefore retry Cholesky with
+    progressively stronger diagonal jitter.
+    """
+    H = 0.5 * (H + H.T)
+    eye = torch.eye(H.shape[0], dtype=H.dtype, device=H.device)
+    damp0 = float(base_damp.detach().item())
+    jitter_schedule = [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0]
+    for attempt_idx, mult in enumerate(jitter_schedule):
+        jitter = damp0 * mult
+        H_try = H if jitter == 0.0 else H + jitter * eye
+        chol, info = torch.linalg.cholesky_ex(H_try)
+        if int(info.max().item()) != 0:
+            continue
+        Hinv = torch.cholesky_inverse(chol)
+        Hinv = 0.5 * (Hinv + Hinv.T)
+        upper, info = torch.linalg.cholesky_ex(Hinv, upper=True)
+        if int(info.max().item()) == 0:
+            return upper, {
+                "attempts": attempt_idx + 1,
+                "extra_damp_mult": float(mult),
+                "extra_damp": float(jitter),
+                "total_damp_mult": float(1.0 + mult),
+                "base_damp": damp0,
+            }
+    return None, {
+        "attempts": len(jitter_schedule),
+        "extra_damp_mult": None,
+        "extra_damp": None,
+        "total_damp_mult": None,
+        "base_damp": damp0,
+    }
+
+def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128, return_debug=False):
     """Full GPTQ: Hessian-aware int6 quantization with Cholesky error compensation.
-    If hessian is None, falls back to percentile search."""
+    If the Hessian is missing or too ill-conditioned even after stabilization,
+    fall back to percentile search."""
     t32 = weight.float()
     if t32.ndim != 2 or hessian is None:
-        return _quantize_int6_percentile(t32, clip_range)
+        q, s = _quantize_int6_percentile(t32, clip_range)
+        debug = {
+            "mode": "percentile_no_hessian",
+            "attempts": 0,
+            "base_damp": None,
+            "extra_damp_mult": None,
+            "extra_damp": None,
+            "total_damp_mult": None,
+        }
+        return (q, s, debug) if return_debug else (q, s)
     rows, cols = t32.shape
     H = hessian.float().clone()
+    H = 0.5 * (H + H.T)
     dead = torch.diag(H) == 0
     H[dead, dead] = 1
     damp = 0.01 * torch.mean(torch.diag(H))
@@ -1568,9 +1622,14 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     W = t32[:, perm].clone()
     W[:, dead[perm]] = 0
     H = H[perm][:, perm]
-    Hinv = torch.linalg.cholesky(H)
-    Hinv = torch.cholesky_inverse(Hinv)
-    Hinv = torch.linalg.cholesky(Hinv, upper=True)
+    Hinv, chol_debug = _stable_upper_cholesky_from_hessian(H, damp)
+    if Hinv is None:
+        q, s = _quantize_int6_percentile(t32, clip_range)
+        debug = {
+            "mode": "percentile_fallback_non_pd",
+            **chol_debug,
+        }
+        return (q, s, debug) if return_debug else (q, s)
     best_q = None; best_scale = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
@@ -1602,9 +1661,13 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
         recon = Q.float() * sf[:, None]
         mse = (W - recon).pow(2).mean().item()
         if mse < best_err:
-            best_q, best_scale, best_err = Q, s, mse
+                best_q, best_scale, best_err = Q, s, mse
     best_q = best_q[:, inv_perm]
-    return best_q, best_scale
+    debug = {
+        "mode": "gptq",
+        **chol_debug,
+    }
+    return (best_q, best_scale, debug) if return_debug else (best_q, best_scale)
 
 def _quantize_int6_percentile(t32, clip_range=31):
     """Fallback: percentile search (for 1D or no-Hessian cases)."""
@@ -1882,8 +1945,9 @@ def collect_hessians(hessian_model, train_loader, args, device, grad_accum_steps
     for name in hessians:
         H = hessians[name]
         H /= num_batches
+        H = 0.5 * (H + H.T)
         damp = 0.01 * torch.diag(H).mean().clamp_min(1e-6)
-        H += damp * torch.eye(H.shape[0])
+        H += damp * torch.eye(H.shape[0], dtype=H.dtype, device=H.device)
         hessians[name] = H
     hessian_model.train()
     return hessians
@@ -1893,7 +1957,7 @@ def mixed_quantize_int6(
     int6_cats: set[str],
     hessians: dict[str, Tensor] | None = None,
     gptq_block_size: int = 128,
-):
+) -> tuple[dict[str, Tensor], dict[str, object], list[dict[str, object]]]:
     num_layers_total = max(
         (int(k.split(".")[1]) for k in state_dict if k.startswith("blocks.")),
         default=0,
@@ -1901,6 +1965,7 @@ def mixed_quantize_int6(
     late_k_layers = set(range(num_layers_total - 2, num_layers_total))
     result: dict[str, Tensor] = {}
     meta: dict[str, object] = {}
+    gptq_debug_report: list[dict[str, object]] = []
     for name, tensor in state_dict.items():
         t = tensor.detach().cpu().contiguous()
         cat = _classify_param(name)
@@ -1916,7 +1981,14 @@ def mixed_quantize_int6(
             cr = 31  # int6 for all weights
             H = hessians.get(name) if hessians else None
             if H is not None:
-                q, s = quantize_int6_gptq(t, hessian=H, clip_range=cr, block_size=gptq_block_size)
+                q, s, debug = quantize_int6_gptq(
+                    t,
+                    hessian=H,
+                    clip_range=cr,
+                    block_size=gptq_block_size,
+                    return_debug=True,
+                )
+                gptq_debug_report.append({"name": name, **debug})
             else:
                 q, s = quantize_int6_per_row(t, clip_range=cr)
             result[name + ".q"] = q
@@ -1927,7 +1999,7 @@ def mixed_quantize_int6(
             result[name + ".q"] = q
             result[name + ".scale"] = s
             meta[name] = {"type": "int8"}
-    return result, meta
+    return result, meta, gptq_debug_report
 def dequantize_mixed_int6(result: dict[str, Tensor], meta: dict[str, object],
                           template_sd: dict[str, Tensor]) -> dict[str, Tensor]:
     out: dict[str, Tensor] = {}
@@ -2100,7 +2172,12 @@ def main() -> None:
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
     tok_params = [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
     if base_model.ngram is not None:
-        tok_params.append({"params": [base_model.ngram.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        tok_params.append({
+            "params": [base_model.ngram.embed.weight],
+            "lr": token_lr,
+            "base_lr": token_lr,
+            "weight_decay": args.ngram_wd,
+        })
         if hasattr(base_model.ngram, "order_gate_bias") and base_model.ngram.order_gate_bias is not None:
             scalar_params.append(base_model.ngram.order_gate_bias)
         if base_model.ngram.proj is not None:
@@ -2167,7 +2244,8 @@ def main() -> None:
     log0(
         f"tie_embeddings:{args.tie_embeddings} embed_lr:{token_lr} "
         f"head_lr:{args.head_lr if base_model.lm_head is not None else 0.0} "
-        f"matrix_lr:{args.matrix_lr} scalar_lr:{args.scalar_lr}"
+        f"matrix_lr:{args.matrix_lr} scalar_lr:{args.scalar_lr} "
+        f"ngram_wd:{args.ngram_wd if base_model.ngram is not None else 0.0}"
     )
     log0(
         f"train_batch_tokens:{args.train_batch_tokens} train_seq_len:{args.train_seq_len} "
@@ -2439,12 +2517,50 @@ def main() -> None:
     del ar_tokens
     del hessian_model
     torch.cuda.empty_cache()
-    quant_result, quant_meta = mixed_quantize_int6(
+    quant_result, quant_meta, gptq_debug_report = mixed_quantize_int6(
         unbanked_sd,
         {"mlp", "attn"},
         hessians=hessians,
         gptq_block_size=args.gptq_block_size,
     )
+    if gptq_debug_report:
+        jittered_layers = [
+            info for info in gptq_debug_report
+            if info.get("mode") == "gptq" and float(info.get("extra_damp_mult") or 0.0) > 0.0
+        ]
+        fallback_layers = [
+            info for info in gptq_debug_report
+            if info.get("mode") != "gptq"
+        ]
+        max_total_mult = max(
+            (float(info.get("total_damp_mult") or 0.0) for info in gptq_debug_report),
+            default=0.0,
+        )
+        log0(
+            f"gptq:debug layers={len(gptq_debug_report)} "
+            f"jittered={len(jittered_layers)} fallback={len(fallback_layers)} "
+            f"max_total_damp_mult={max_total_mult:.1f}"
+        )
+        if jittered_layers or fallback_layers:
+            for info in gptq_debug_report:
+                mode = str(info.get("mode"))
+                extra_mult = float(info.get("extra_damp_mult") or 0.0)
+                if mode == "gptq" and extra_mult <= 0.0:
+                    continue
+                total_mult = info.get("total_damp_mult")
+                total_mult_str = "None" if total_mult is None else f"{float(total_mult):.1f}"
+                base_damp = info.get("base_damp")
+                base_damp_str = "None" if base_damp is None else f"{float(base_damp):.3e}"
+                extra_damp = info.get("extra_damp")
+                extra_damp_str = "None" if extra_damp is None else f"{float(extra_damp):.3e}"
+                log0(
+                    f"gptq:debug layer={info['name']} mode={mode} "
+                    f"attempts={int(info.get('attempts') or 0)} "
+                    f"base_damp={base_damp_str} extra_damp={extra_damp_str} "
+                    f"total_damp_mult={total_mult_str}"
+                )
+        else:
+            log0("gptq:debug no layer required extra jitter or fallback")
     # NOVEL: Selective ±1 pruning by reconstruction error
     # Sort ±1 quantized values by their reconstruction error (scale²),
     # prune least-impactful first until artifact fits target size.
