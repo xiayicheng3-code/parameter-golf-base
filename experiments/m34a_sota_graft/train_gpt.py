@@ -2562,7 +2562,6 @@ def main() -> None:
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     swa_state: dict[str, Tensor] | None = None
     swa_count = 0
-    from collections import deque
     lawa_queue: deque[dict[str, Tensor]] = deque(maxlen=args.lawa_k)
     ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()}
     ema_decay = 0.997
