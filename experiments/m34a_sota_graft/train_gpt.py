@@ -11,6 +11,7 @@ import sys
 import time
 import uuid
 import zlib
+from collections import deque
 from pathlib import Path
 try:
     import zstandard
@@ -45,6 +46,9 @@ class Hyperparameters:
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
+    batch_switch_step = int(os.environ.get("BATCH_SWITCH_STEP", 0))
+    batch_switch_train_batch_tokens = int(os.environ.get("BATCH_SWITCH_TRAIN_BATCH_TOKENS", 0))
+    batch_switch_compile_tax_window = int(os.environ.get("BATCH_SWITCH_COMPILE_TAX_WINDOW", 8))
     grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 0))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
@@ -74,6 +78,8 @@ class Hyperparameters:
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
     eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+    train_tail_loss_tokens = int(os.environ.get("TRAIN_TAIL_LOSS_TOKENS", 0))
+    train_tail_loss_weight = float(os.environ.get("TRAIN_TAIL_LOSS_WEIGHT", 1.0))
     mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
     mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
     muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
@@ -85,21 +91,13 @@ class Hyperparameters:
     muon_wd = float(os.environ.get("MUON_WD", 0.04))
     adam_wd = float(os.environ.get("ADAM_WD", 0.04))
     qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
-    ngram_base_vocab_size = int(os.environ.get("NGRAM_BASE_VOCAB_SIZE", 2048))
     ngram_dim = int(os.environ.get("NGRAM_DIM", 128))
     ngram_wd = float(os.environ.get("NGRAM_WD", 1e-4))
     ngram_orders = parse_int_csv(os.environ.get("NGRAM_ORDERS", "2,3,4"))
     ngram_vocab_sizes = parse_int_csv(
         os.environ.get(
             "NGRAM_VOCAB_SIZES",
-            ",".join(
-                str(max(2, v))
-                for v in (
-                    ngram_base_vocab_size,
-                    ngram_base_vocab_size // 2,
-                    ngram_base_vocab_size // 4,
-                )
-            ),
+            "3072,1536,768",
         )
     )
     ngram_num_hashes = parse_int_csv(os.environ.get("NGRAM_NUM_HASHES", "2,2,2"))
@@ -115,13 +113,22 @@ class Hyperparameters:
     gated_attention = bool(int(os.environ.get("GATED_ATTENTION", "0")))
     value_residual = bool(int(os.environ.get("VALUE_RESIDUAL", "0")))  # VRL with sigmoid gates (off by default, risky)
     # GPTQ calibration
+    gptq_calib_source = os.environ.get("GPTQ_CALIB_SOURCE", "ar_prompt_bank").strip().lower()
+    gptq_cache_num_batches = int(os.environ.get("GPTQ_CACHE_NUM_BATCHES", 4))
+    gptq_cache_max_seqs = int(os.environ.get("GPTQ_CACHE_MAX_SEQS", 64))
     gptq_ar_num_seqs = int(os.environ.get("GPTQ_AR_NUM_SEQS", 64))
     gptq_ar_batch_size = int(os.environ.get("GPTQ_AR_BATCH_SIZE", 16))
     gptq_hessian_batch_size = int(os.environ.get("GPTQ_HESSIAN_BATCH_SIZE", 16))
     gptq_ar_temperature = float(os.environ.get("GPTQ_AR_TEMPERATURE", 0.8))
+    gptq_ar_repeat_penalty = float(os.environ.get("GPTQ_AR_REPEAT_PENALTY", 1.05))
+    gptq_ar_repeat_last_n = int(os.environ.get("GPTQ_AR_REPEAT_LAST_N", 128))
     gptq_ar_print_sequences = int(os.environ.get("GPTQ_AR_PRINT_SEQUENCES", 10))
     gptq_ar_print_max_chars = int(os.environ.get("GPTQ_AR_PRINT_MAX_CHARS", 2048))
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
+    gptq_prompt_demo_count = int(os.environ.get("GPTQ_PROMPT_DEMO_COUNT", 16))
+    gptq_prompt_demo_new_tokens = int(os.environ.get("GPTQ_PROMPT_DEMO_NEW_TOKENS", 128))
+    gptq_prompt_demo_temperature = float(os.environ.get("GPTQ_PROMPT_DEMO_TEMPERATURE", 0.8))
+    gptq_prompt_demo_max_chars = int(os.environ.get("GPTQ_PROMPT_DEMO_MAX_CHARS", 512))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -768,7 +775,6 @@ class NgramHashEmbedding(nn.Module):
 
     def __init__(
         self,
-        ngram_base_vocab_size: int,
         ngram_dim: int,
         model_dim: int,
         ngram_orders: list[int],
@@ -777,7 +783,6 @@ class NgramHashEmbedding(nn.Module):
         ngram_init_std: float,
     ):
         super().__init__()
-        self.ngram_base_vocab_size = ngram_base_vocab_size
         self.ngram_orders = list(ngram_orders)
         self.ngram_vocab_sizes = list(ngram_vocab_sizes)
         self.num_hashes = list(ngram_num_hashes)
@@ -1044,7 +1049,8 @@ class GPT(nn.Module):
         qk_gain_init: float,
         mtp_num_heads: int = 0,
         mtp_loss_weight: float = 0.1,
-        ngram_base_vocab_size: int = 0,
+        train_tail_loss_tokens: int = 0,
+        train_tail_loss_weight: float = 1.0,
         ngram_dim: int = 128,
         ngram_orders: list[int] | None = None,
         ngram_vocab_sizes: list[int] | None = None,
@@ -1070,22 +1076,20 @@ class GPT(nn.Module):
         self.value_residual = value_residual
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
+        self.train_tail_loss_tokens = train_tail_loss_tokens
+        self.train_tail_loss_weight = train_tail_loss_weight
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        resolved_ngram_vocab_sizes = ngram_vocab_sizes if ngram_vocab_sizes is not None else [3072, 1536, 768]
         self.ngram = (
             NgramHashEmbedding(
-                ngram_base_vocab_size,
                 ngram_dim,
                 model_dim,
                 ngram_orders if ngram_orders is not None else [2, 3, 4],
-                ngram_vocab_sizes if ngram_vocab_sizes is not None else [
-                    max(2, ngram_base_vocab_size),
-                    max(2, ngram_base_vocab_size // 2),
-                    max(2, ngram_base_vocab_size // 4),
-                ],
+                resolved_ngram_vocab_sizes,
                 ngram_num_hashes if ngram_num_hashes is not None else [2, 2, 2],
                 ngram_init_std,
             )
-            if ngram_base_vocab_size > 0 else None
+            if len(resolved_ngram_vocab_sizes) > 0 else None
         )
         self.smear = SmearGate(model_dim)
         self.num_encoder_layers = num_layers // 2
@@ -1235,7 +1239,19 @@ class GPT(nn.Module):
                 raise RuntimeError("lm_head is required when tie_embeddings=False")
             logits_proj = self.lm_head(x_flat)
         logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
-        main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
+        if (
+            self.training
+            and self.train_tail_loss_tokens > 0
+            and self.train_tail_loss_weight != 1.0
+        ):
+            bsz, seqlen, _ = x.shape
+            token_losses = F.cross_entropy(logits.float(), targets, reduction="none").view(bsz, seqlen)
+            tail = min(self.train_tail_loss_tokens, seqlen)
+            weights = token_losses.new_ones((bsz, seqlen))
+            weights[:, -tail:] = self.train_tail_loss_weight
+            main_loss = (token_losses * weights).sum() / weights.sum()
+        else:
+            main_loss = F.cross_entropy(logits.float(), targets, reduction="mean")
         if self.training and self.mtp_num_heads > 0 and self.mtp_loss_weight > 0.0:
             _, seqlen, dim = x.shape
             mtp_loss_sum = x.new_zeros(())
@@ -1428,7 +1444,8 @@ def eval_val_sliding(
 
 
 def generate_autoregressive_calib(model, device, num_seqs=64, seq_len=2048,
-                                   vocab_size=1024, temperature=0.8, batch_size=8, seed=42):
+                                   vocab_size=1024, temperature=0.8, batch_size=8, seed=42,
+                                   repeat_penalty: float = 1.0, repeat_last_n: int = 0):
     """Generate sequences autoregressively from the model for GPTQ calibration.
     No external data accessed — fully self-contained."""
     model.eval()
@@ -1449,6 +1466,12 @@ def generate_autoregressive_calib(model, device, num_seqs=64, seq_len=2048,
                     kv_caches=kv_caches,
                     prev_pre_smear=prev_pre_smear,
                 )
+                apply_repeat_penalty_inplace(
+                    next_logit,
+                    tokens,
+                    repeat_penalty=repeat_penalty,
+                    repeat_last_n=repeat_last_n,
+                )
                 probs = torch.softmax(next_logit / temperature, dim=-1)
                 next_tok = torch.multinomial(probs, 1, generator=rng)
                 tokens = torch.cat([tokens, next_tok], dim=1)
@@ -1457,27 +1480,238 @@ def generate_autoregressive_calib(model, device, num_seqs=64, seq_len=2048,
     return all_tokens
 
 
-def log_autoregressive_calib_sequences(
+def apply_repeat_penalty_inplace(
+    logits: Tensor,
+    recent_tokens: Tensor,
+    repeat_penalty: float,
+    repeat_last_n: int,
+) -> None:
+    if repeat_penalty <= 1.0 or repeat_last_n <= 0 or recent_tokens.numel() == 0:
+        return
+    window = recent_tokens[:, -min(repeat_last_n, recent_tokens.size(1)) :]
+    for row_idx in range(logits.size(0)):
+        repeated = torch.unique(window[row_idx])
+        if repeated.numel() == 0:
+            continue
+        row_logits = logits[row_idx]
+        repeated_logits = row_logits[repeated]
+        penalized = torch.where(
+            repeated_logits > 0,
+            repeated_logits / repeat_penalty,
+            repeated_logits * repeat_penalty,
+        )
+        row_logits[repeated] = penalized
+
+
+def generate_prompt_bank_autoregressive_calib(
+    model,
+    sp: spm.SentencePieceProcessor,
+    device: torch.device,
+    prompt_bank: list[str],
+    num_seqs: int = 64,
+    seq_len: int = 2048,
+    temperature: float = 0.8,
+    batch_size: int = 8,
+    seed: int = 42,
+    repeat_penalty: float = 1.0,
+    repeat_last_n: int = 0,
+) -> Tensor:
+    """Generate calibration sequences from a fixed prompt bank.
+
+    Prompts are teacher-forced through their initial tokens, then generation
+    continues autoregressively until seq_len.
+    """
+    prompt_token_bank = [sp.encode(text, out_type=int) for text in prompt_bank]
+    prompt_token_bank = [ids[:seq_len] for ids in prompt_token_bank if len(ids) > 0]
+    if not prompt_token_bank:
+        raise ValueError("Prompt bank is empty after tokenization")
+    model.eval()
+    rng = torch.Generator(device=device)
+    rng.manual_seed(seed)
+    all_tokens = torch.empty(num_seqs, seq_len, device=device, dtype=torch.int64)
+    max_recent = max(model.ngram.ngram_orders) if model.ngram is not None else 1
+    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        for batch_start in range(0, num_seqs, batch_size):
+            bs = min(batch_size, num_seqs - batch_start)
+            prompt_batch = [
+                prompt_token_bank[(batch_start + i) % len(prompt_token_bank)]
+                for i in range(bs)
+            ]
+            prompt_lens = torch.tensor(
+                [min(len(ids), seq_len) for ids in prompt_batch],
+                device=device,
+                dtype=torch.int64,
+            )
+            max_prompt_len = int(prompt_lens.max().item())
+            prompt_tensor = torch.zeros(bs, max_prompt_len, device=device, dtype=torch.int64)
+            for i, ids in enumerate(prompt_batch):
+                plen = min(len(ids), seq_len)
+                prompt_tensor[i, :plen] = torch.tensor(ids[:plen], device=device, dtype=torch.int64)
+            tokens = prompt_tensor[:, :1].clone()
+            kv_caches = None
+            prev_pre_smear = None
+            recent_tokens = tokens
+            for pos in range(1, seq_len):
+                next_logit, kv_caches, prev_pre_smear = model.forward_next_logits_cached(
+                    tokens[:, -1:],
+                    recent_tokens,
+                    kv_caches=kv_caches,
+                    prev_pre_smear=prev_pre_smear,
+                )
+                apply_repeat_penalty_inplace(
+                    next_logit,
+                    tokens,
+                    repeat_penalty=repeat_penalty,
+                    repeat_last_n=repeat_last_n,
+                )
+                probs = torch.softmax(next_logit / temperature, dim=-1)
+                next_tok = torch.multinomial(probs, 1, generator=rng)
+                force_mask = pos < prompt_lens
+                if force_mask.any():
+                    next_tok[force_mask, 0] = prompt_tensor[force_mask, pos]
+                tokens = torch.cat([tokens, next_tok], dim=1)
+                recent_tokens = tokens[:, -max_recent:]
+            all_tokens[batch_start : batch_start + bs] = tokens
+    return all_tokens
+
+
+def log_token_sequences(
     log0,
     sp: spm.SentencePieceProcessor,
     token_seqs: Tensor,
     max_sequences: int,
     max_chars: int = 0,
+    header: str = "gptq:calibration_sequences",
+    line_prefix: str = "gptq:seq",
 ) -> None:
     token_seqs_cpu = token_seqs.detach().cpu()
     total = token_seqs_cpu.size(0)
     num_to_print = total if max_sequences <= 0 else min(total, max_sequences)
-    log0(
-        f"gptq:autoregressive_calibration_sequences count={total} "
-        f"showing={num_to_print}"
-    )
+    log0(f"{header} count={total} showing={num_to_print}")
     for idx in range(num_to_print):
         ids = token_seqs_cpu[idx].tolist()
         text = sp.decode_ids(ids)
         text = text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
         if max_chars > 0 and len(text) > max_chars:
             text = text[:max_chars] + "...<truncated>"
-        log0(f"gptq:ar_seq[{idx}] {text}")
+        log0(f"{line_prefix}[{idx}] {text}")
+
+
+def pack_xy_for_calibration(x: Tensor, y: Tensor) -> Tensor:
+    # Reconstruct a token sequence whose shifted pairs reproduce the training
+    # x/y batch exactly when later fed back through collect_hessians_from_tokens.
+    return torch.cat([x[:, :1], y], dim=1).detach().to(device="cpu", dtype=torch.int64)
+
+
+def get_cached_train_calibration_tokens(
+    cached_batches: deque[Tensor],
+    max_seqs: int,
+) -> Tensor | None:
+    if len(cached_batches) == 0:
+        return None
+    token_seqs = torch.cat(list(cached_batches), dim=0)
+    if max_seqs > 0 and token_seqs.size(0) > max_seqs:
+        token_seqs = token_seqs[-max_seqs:]
+    return token_seqs.contiguous()
+
+
+PROMPT_DEMO_TEXTS = [
+    "Describe the city you live in.",
+    "Explain a skill that takes a long time to learn well.",
+    "Write the opening sentence of a news article about a strange weather event.",
+    "Tell a short story that begins with a missed train.",
+    "Give three practical tips for sleeping better.",
+    "Summarize why people enjoy team sports.",
+    "Describe a room that feels comfortable to work in.",
+    "Write a paragraph about a historical place worth visiting.",
+    "Explain why some habits are hard to break.",
+    "Describe a meal you would cook for close friends.",
+    "Write a short introduction to a science exhibition.",
+    "Explain the appeal of living near water.",
+    "Describe a memorable teacher.",
+    "Write a paragraph about how cities change at night.",
+    "Explain one reason people keep personal journals.",
+    "Describe a park in early autumn.",
+]
+
+GPTQ_PROMPT_BANK_TEXTS = [
+    "The water cycle describes how water moves through the environment.",
+    "A solar eclipse happens when",
+    "Scientists recently reported that",
+    "Weather forecasts are created by combining",
+    "The history of the printing press began with",
+    "Public libraries provide more than just books.",
+    "In many schools, group projects help students",
+    "Recycling aluminum saves energy because",
+    "The following guide explains how to start a compost bin.",
+    "Here are three ways to reduce food waste at home.",
+    "A healthy breakfast usually includes",
+    "When plants do not get enough light,",
+    "A news report released on Tuesday described",
+    "The city council announced a plan to improve",
+    "Many animals migrate in order to",
+    "Earthquakes occur when",
+]
+
+
+def generate_prompt_demo_texts(
+    model,
+    sp: spm.SentencePieceProcessor,
+    device: torch.device,
+    prompts: list[str],
+    max_new_tokens: int,
+    temperature: float,
+    seed: int,
+    repeat_penalty: float = 1.0,
+    repeat_last_n: int = 0,
+) -> list[str]:
+    model.eval()
+    outputs: list[str] = []
+    rng = torch.Generator(device=device)
+    rng.manual_seed(seed)
+    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        for prompt in prompts:
+            prompt_ids = sp.encode(prompt, out_type=int)
+            if not prompt_ids:
+                continue
+            tokens = torch.tensor([prompt_ids[:1]], device=device, dtype=torch.int64)
+            kv_caches = None
+            prev_pre_smear = None
+            recent_tokens = tokens
+            total_len = min(
+                model.max_seq_len,
+                max(len(prompt_ids), 1) + max(max_new_tokens, 0),
+            )
+            for pos in range(1, total_len):
+                next_logit, kv_caches, prev_pre_smear = model.forward_next_logits_cached(
+                    tokens[:, -1:],
+                    recent_tokens,
+                    kv_caches=kv_caches,
+                    prev_pre_smear=prev_pre_smear,
+                )
+                apply_repeat_penalty_inplace(
+                    next_logit,
+                    tokens,
+                    repeat_penalty=repeat_penalty,
+                    repeat_last_n=repeat_last_n,
+                )
+                if pos < len(prompt_ids):
+                    next_tok = torch.tensor(
+                        [[prompt_ids[pos]]],
+                        device=device,
+                        dtype=torch.int64,
+                    )
+                else:
+                    probs = torch.softmax(next_logit / temperature, dim=-1)
+                    next_tok = torch.multinomial(probs, 1, generator=rng)
+                tokens = torch.cat([tokens, next_tok], dim=1)
+                recent_tokens = (
+                    tokens[:, -max(model.ngram.ngram_orders):]
+                    if model.ngram is not None else tokens[:, -1:]
+                )
+            text = sp.decode_ids(tokens[0].detach().cpu().tolist())
+            outputs.append(text)
+    return outputs
 
 
 def collect_hessians_from_tokens(hessian_model, token_seqs, device, batch_size=8):
@@ -1832,7 +2066,7 @@ class _HessianGPT(nn.Module):
     """Non-banked GPT model matching unbanked state dict keys for Hessian collection."""
     def __init__(self, vocab_size, num_layers, model_dim, num_heads, num_kv_heads,
                  mlp_mult, tie_embeddings, logit_softcap, rope_base, qk_gain_init,
-                 ngram_base_vocab_size=0, ngram_dim=128, ngram_orders=None, ngram_vocab_sizes=None, ngram_num_hashes=None, ngram_init_std=0.005, xsa_last_n=0,
+                 ngram_dim=128, ngram_orders=None, ngram_vocab_sizes=None, ngram_num_hashes=None, ngram_init_std=0.005, xsa_last_n=0,
                  rope_dims=0, ln_scale=False,
                  ve_enabled=False, ve_dim=128, ve_layers="9,10"):
         super().__init__()
@@ -1840,21 +2074,17 @@ class _HessianGPT(nn.Module):
         self.logit_softcap = logit_softcap
         self.num_layers = num_layers
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        resolved_ngram_vocab_sizes = ngram_vocab_sizes if ngram_vocab_sizes is not None else [3072, 1536, 768]
         self.ngram = (
             NgramHashEmbedding(
-                ngram_base_vocab_size,
                 ngram_dim,
                 model_dim,
                 ngram_orders if ngram_orders is not None else [2, 3, 4],
-                ngram_vocab_sizes if ngram_vocab_sizes is not None else [
-                    max(2, ngram_base_vocab_size),
-                    max(2, ngram_base_vocab_size // 2),
-                    max(2, ngram_base_vocab_size // 4),
-                ],
+                resolved_ngram_vocab_sizes,
                 ngram_num_hashes if ngram_num_hashes is not None else [2, 2, 2],
                 ngram_init_std,
             )
-            if ngram_base_vocab_size > 0 else None
+            if len(resolved_ngram_vocab_sizes) > 0 else None
         )
         self.smear = SmearGate(model_dim)
         self.num_encoder_layers = num_layers // 2
@@ -2044,6 +2274,14 @@ def main() -> None:
             f"TRAIN_BATCH_TOKENS={args.train_batch_tokens} must be divisible by "
             f"WORLD_SIZE*GRAD_ACCUM_STEPS={world_size * grad_accum_steps}"
         )
+    if args.batch_switch_step > 0:
+        if args.batch_switch_train_batch_tokens <= 0:
+            raise ValueError("BATCH_SWITCH_TRAIN_BATCH_TOKENS must be positive when BATCH_SWITCH_STEP > 0")
+        if args.batch_switch_train_batch_tokens % (world_size * grad_accum_steps) != 0:
+            raise ValueError(
+                f"BATCH_SWITCH_TRAIN_BATCH_TOKENS={args.batch_switch_train_batch_tokens} must be divisible by "
+                f"WORLD_SIZE*GRAD_ACCUM_STEPS={world_size * grad_accum_steps}"
+            )
     grad_scale = 1.0 / grad_accum_steps
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
@@ -2119,7 +2357,8 @@ def main() -> None:
         qk_gain_init=args.qk_gain_init,
         mtp_num_heads=args.mtp_num_heads,
         mtp_loss_weight=args.mtp_loss_weight,
-        ngram_base_vocab_size=args.ngram_base_vocab_size,
+        train_tail_loss_tokens=args.train_tail_loss_tokens,
+        train_tail_loss_weight=args.train_tail_loss_weight,
         ngram_dim=args.ngram_dim,
         ngram_orders=args.ngram_orders,
         ngram_vocab_sizes=args.ngram_vocab_sizes,
@@ -2253,8 +2492,34 @@ def main() -> None:
         f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
+    if args.batch_switch_step > 0:
+        log0(
+            f"batch_switch:enabled step={args.batch_switch_step} "
+            f"train_batch_tokens->{args.batch_switch_train_batch_tokens} "
+            f"micro_batch_tokens->{args.batch_switch_train_batch_tokens // (world_size * grad_accum_steps)} "
+            f"compile_tax_window={args.batch_switch_compile_tax_window}"
+        )
+    log0(
+        f"eval_stride:{args.eval_stride} train_tail_loss_tokens:{args.train_tail_loss_tokens} "
+        f"train_tail_loss_weight:{args.train_tail_loss_weight}"
+    )
+    log0(
+        f"gptq_calib_source:{args.gptq_calib_source} "
+        f"gptq_cache_num_batches:{args.gptq_cache_num_batches} "
+        f"gptq_cache_max_seqs:{args.gptq_cache_max_seqs}"
+    )
+    log0(
+        f"gptq_ar_temperature:{args.gptq_ar_temperature} "
+        f"gptq_ar_repeat_penalty:{args.gptq_ar_repeat_penalty} "
+        f"gptq_ar_repeat_last_n:{args.gptq_ar_repeat_last_n}"
+    )
     log0(f"seed:{args.seed}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+    train_calib_cache = (
+        deque(maxlen=max(args.gptq_cache_num_batches, 1))
+        if master_process and args.gptq_cache_num_batches > 0
+        else None
+    )
     def zero_grad_all() -> None:
         for opt in optimizers:
             opt.zero_grad(set_to_none=True)
@@ -2303,6 +2568,11 @@ def main() -> None:
     ema_decay = 0.997
     training_time_ms = 0.0
     stop_after_step: int | None = None
+    current_train_batch_tokens = args.train_batch_tokens
+    batch_switch_applied = False
+    batch_switch_tax_logged = False
+    pre_switch_step_times_ms: deque[float] = deque(maxlen=32)
+    post_switch_step_times_ms: list[float] = []
     torch.cuda.synchronize()
     t0 = time.perf_counter()
     step = 0
@@ -2337,15 +2607,30 @@ def main() -> None:
                     f"step:{step}/{args.iterations}"
                 )
             break
+        if (
+            args.batch_switch_step > 0
+            and not batch_switch_applied
+            and step >= args.batch_switch_step
+        ):
+            current_train_batch_tokens = args.batch_switch_train_batch_tokens
+            batch_switch_applied = True
+            log0(
+                f"batch_switch:activated at completed_step={step} "
+                f"new_train_batch_tokens={current_train_batch_tokens} "
+                f"new_micro_batch_tokens={current_train_batch_tokens // (world_size * grad_accum_steps)}"
+            )
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
         if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
             CastedLinear._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
+        iter_t0 = time.perf_counter()
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
         for micro_step in range(grad_accum_steps):
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            x, y = train_loader.next_batch(current_train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            if train_calib_cache is not None:
+                train_calib_cache.append(pack_xy_for_calibration(x, y))
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 loss = model(x, y)
             train_loss += loss.detach()
@@ -2380,7 +2665,31 @@ def main() -> None:
             for name, t in base_model.state_dict().items():
                 ema_state[name].mul_(ema_decay).add_(t.detach().float(), alpha=1.0 - ema_decay)
         step += 1
+        step_wall_ms = 1000.0 * (time.perf_counter() - iter_t0)
+        if batch_switch_applied:
+            if len(post_switch_step_times_ms) < max(args.batch_switch_compile_tax_window, 1):
+                post_switch_step_times_ms.append(step_wall_ms)
+        else:
+            pre_switch_step_times_ms.append(step_wall_ms)
         approx_training_time_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        if (
+            batch_switch_applied
+            and not batch_switch_tax_logged
+            and len(post_switch_step_times_ms) >= max(args.batch_switch_compile_tax_window, 1)
+        ):
+            post_tail = post_switch_step_times_ms[1:] or post_switch_step_times_ms
+            new_steady_ms = float(np.median(post_tail))
+            pre_steady_ms = float(np.median(list(pre_switch_step_times_ms))) if pre_switch_step_times_ms else float("nan")
+            first_post_ms = post_switch_step_times_ms[0]
+            cumulative_excess_ms = sum(max(0.0, t - new_steady_ms) for t in post_switch_step_times_ms)
+            log0(
+                f"batch_switch:compile_tax_estimate pre_steady_ms:{pre_steady_ms:.2f} "
+                f"new_steady_ms:{new_steady_ms:.2f} first_post_ms:{first_post_ms:.2f} "
+                f"first_step_excess_ms:{max(0.0, first_post_ms - new_steady_ms):.2f} "
+                f"cumulative_excess_ms:{cumulative_excess_ms:.2f} "
+                f"window:{len(post_switch_step_times_ms)}"
+            )
+            batch_switch_tax_logged = True
         if args.swa_enabled and scale < 0.2 and step % args.swa_every == 0:
             if swa_state is None:
                 swa_state = {name: t.detach().cpu().clone() for name, t in base_model.state_dict().items()}
@@ -2454,168 +2763,228 @@ def main() -> None:
     # Unbank 3D tensors into individual 2D tensors for quantization
     sd_cpu = {k: v.detach().cpu() for k, v in export_sd.items()}
     unbanked_sd = _unbank_state_dict(sd_cpu, args.num_layers)
-    # Full GPTQ: collect Hessians via a temporary non-banked model
-    log0(f"gptq:building non-banked model for Hessian collection...")
-    hessian_model = _HessianGPT(
-        vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
-        num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
-        tie_embeddings=args.tie_embeddings, logit_softcap=args.logit_softcap,
-        rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
-        ngram_base_vocab_size=args.ngram_base_vocab_size, ngram_dim=args.ngram_dim,
-        ngram_orders=args.ngram_orders, ngram_vocab_sizes=args.ngram_vocab_sizes,
-        ngram_num_hashes=args.ngram_num_hashes, ngram_init_std=args.ngram_init_std,
-        xsa_last_n=args.xsa_last_n, rope_dims=args.rope_dims, ln_scale=args.ln_scale,
-        ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
-    ).to(device).bfloat16()
-    for m in hessian_model.modules():
-        if isinstance(m, CastedLinear):
-            m.float()
-    restore_low_dim_params_to_fp32(hessian_model)
-    # Load unbanked weights into the non-banked model
-    hessian_model.load_state_dict(
-        {k: v.to(device) for k, v in unbanked_sd.items() if k in hessian_model.state_dict()},
-        strict=False,
-    )
-    # Autoregressive self-generated calibration (no external data)
-    log0(
-        "gptq:generating autoregressive calibration data "
-        f"({args.gptq_ar_num_seqs} seqs x {args.train_seq_len} tokens, "
-        f"temp={args.gptq_ar_temperature}, batch={args.gptq_ar_batch_size})..."
-    )
-    base_model.load_state_dict(export_sd, strict=False)
-    t_gen = time.perf_counter()
-    ar_tokens = generate_autoregressive_calib(
-        base_model,
-        device,
-        num_seqs=args.gptq_ar_num_seqs,
-        seq_len=args.train_seq_len,
-        vocab_size=args.vocab_size,
-        temperature=args.gptq_ar_temperature,
-        batch_size=args.gptq_ar_batch_size,
-        seed=args.seed,
-    )
-    log0(f"gptq:generated {len(ar_tokens)} sequences in {time.perf_counter()-t_gen:.1f}s")
-    if args.gptq_ar_print_sequences != 0:
-        log_autoregressive_calib_sequences(
-            log0,
-            sp,
-            ar_tokens,
-            max_sequences=args.gptq_ar_print_sequences,
-            max_chars=args.gptq_ar_print_max_chars,
-        )
-    log0(
-        "gptq:collecting hessians from autoregressive data "
-        f"(batch={args.gptq_hessian_batch_size})..."
-    )
-    hessians = collect_hessians_from_tokens(
-        hessian_model,
-        ar_tokens,
-        device,
-        batch_size=args.gptq_hessian_batch_size,
-    )
-    log0(f"gptq:collected hessians for {len(hessians)} layers (AR self-gen)")
-    del ar_tokens
-    del hessian_model
-    torch.cuda.empty_cache()
-    quant_result, quant_meta, gptq_debug_report = mixed_quantize_int6(
-        unbanked_sd,
-        {"mlp", "attn"},
-        hessians=hessians,
-        gptq_block_size=args.gptq_block_size,
-    )
-    if gptq_debug_report:
-        jittered_layers = [
-            info for info in gptq_debug_report
-            if info.get("mode") == "gptq" and float(info.get("extra_damp_mult") or 0.0) > 0.0
-        ]
-        fallback_layers = [
-            info for info in gptq_debug_report
-            if info.get("mode") != "gptq"
-        ]
-        max_total_mult = max(
-            (float(info.get("total_damp_mult") or 0.0) for info in gptq_debug_report),
-            default=0.0,
-        )
-        log0(
-            f"gptq:debug layers={len(gptq_debug_report)} "
-            f"jittered={len(jittered_layers)} fallback={len(fallback_layers)} "
-            f"max_total_damp_mult={max_total_mult:.1f}"
-        )
-        if jittered_layers or fallback_layers:
-            for info in gptq_debug_report:
-                mode = str(info.get("mode"))
-                extra_mult = float(info.get("extra_damp_mult") or 0.0)
-                if mode == "gptq" and extra_mult <= 0.0:
-                    continue
-                total_mult = info.get("total_damp_mult")
-                total_mult_str = "None" if total_mult is None else f"{float(total_mult):.1f}"
-                base_damp = info.get("base_damp")
-                base_damp_str = "None" if base_damp is None else f"{float(base_damp):.3e}"
-                extra_damp = info.get("extra_damp")
-                extra_damp_str = "None" if extra_damp is None else f"{float(extra_damp):.3e}"
-                log0(
-                    f"gptq:debug layer={info['name']} mode={mode} "
-                    f"attempts={int(info.get('attempts') or 0)} "
-                    f"base_damp={base_damp_str} extra_damp={extra_damp_str} "
-                    f"total_damp_mult={total_mult_str}"
-                )
-        else:
-            log0("gptq:debug no layer required extra jitter or fallback")
-    # NOVEL: Selective ±1 pruning by reconstruction error
-    # Sort ±1 quantized values by their reconstruction error (scale²),
-    # prune least-impactful first until artifact fits target size.
-    # Challenge cap is 16,000,000 decimal bytes total, while this code uses
-    # MiB-style accounting internally for the pruning target. Default to a safe
-    # value below the true cap instead of the old overly-loose 15.9 MiB.
-    target_mb = float(os.environ.get("TARGET_MB", "15.24"))
-    code_bytes_est = len(code.encode("utf-8"))
-    ones_info = []  # (tensor_key, flat_idx, error)
-    for name, info in quant_meta.items():
-        if not (isinstance(info, dict) and info.get("type") == "int6"): continue
-        qk, sk = name + ".q", name + ".scale"
-        if qk not in quant_result or sk not in quant_result: continue
-        q, s = quant_result[qk], quant_result[sk]
-        if s.ndim > 0:
-            ones_mask = (q.abs() == 1)
-            if ones_mask.any():
-                row_idx = torch.arange(q.shape[0]).unsqueeze(1).expand_as(q)[ones_mask]
-                flat_idx = torch.arange(q.numel()).reshape(q.shape)[ones_mask]
-                errors = s.float()[row_idx].pow(2)
-                for fi, err in zip(flat_idx.tolist(), errors.tolist()):
-                    ones_info.append((qk, fi, err))
-    if ones_info:
-        ones_info.sort(key=lambda x: x[2])
-        def _try_prune(n):
-            tmp = {k: v.clone() for k, v in quant_result.items()}
-            for i in range(min(n, len(ones_info))):
-                tmp[ones_info[i][0]].view(-1)[ones_info[i][1]] = 0
-            buf = io.BytesIO(); torch.save({"w": tmp, "m": quant_meta}, buf)
-            return len(lzma.compress(buf.getvalue(), preset=9)) + code_bytes_est, tmp
-        no_sz, _ = _try_prune(0)
-        target_bytes = int(target_mb * 1024 * 1024)
-        log0(f"selective_prune: {len(ones_info)} ±1 candidates, unpruned={no_sz/(1024*1024):.2f}MB target={target_mb}MB")
-        if no_sz <= target_bytes:
-            log0("selective_prune: already fits, no pruning needed")
-        else:
-            full_sz, _ = _try_prune(len(ones_info))
-            log0(f"selective_prune: full ±1 prune={full_sz/(1024*1024):.2f}MB")
-            if full_sz > target_bytes:
-                log0("selective_prune: even full prune not enough, applying all")
-                _, quant_result = _try_prune(len(ones_info))
-            else:
-                lo, hi = 0, len(ones_info)
-                while lo < hi:
-                    mid = (lo + hi) // 2
-                    sz, _ = _try_prune(mid)
-                    if sz <= target_bytes: hi = mid
-                    else: lo = mid + 1
-                log0(f"selective_prune: pruning {lo}/{len(ones_info)} ±1 values ({100*lo/len(ones_info):.1f}%) to fit {target_mb}MB")
-                _, quant_result = _try_prune(lo)
-    quant_buf = io.BytesIO()
-    torch.save({"w": quant_result, "m": quant_meta}, quant_buf)
-    quant_raw = quant_buf.getvalue()
-    quant_blob = lzma.compress(quant_raw, preset=9)
     if master_process:
+        log0("gptq:building non-banked model for Hessian collection...")
+        hessian_model = _HessianGPT(
+            vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
+            num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
+            tie_embeddings=args.tie_embeddings, logit_softcap=args.logit_softcap,
+            rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
+            ngram_dim=args.ngram_dim,
+            ngram_orders=args.ngram_orders, ngram_vocab_sizes=args.ngram_vocab_sizes,
+            ngram_num_hashes=args.ngram_num_hashes, ngram_init_std=args.ngram_init_std,
+            xsa_last_n=args.xsa_last_n, rope_dims=args.rope_dims, ln_scale=args.ln_scale,
+            ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
+        ).to(device).bfloat16()
+        for m in hessian_model.modules():
+            if isinstance(m, CastedLinear):
+                m.float()
+        restore_low_dim_params_to_fp32(hessian_model)
+        hessian_model.load_state_dict(
+            {k: v.to(device) for k, v in unbanked_sd.items() if k in hessian_model.state_dict()},
+            strict=False,
+        )
+        base_model.load_state_dict(export_sd, strict=False)
+        calib_tokens = None
+        calib_source_used = args.gptq_calib_source
+        if args.gptq_calib_source == "train_cache":
+            calib_tokens = get_cached_train_calibration_tokens(
+                train_calib_cache if train_calib_cache is not None else deque(),
+                max_seqs=args.gptq_cache_max_seqs,
+            )
+            if calib_tokens is not None:
+                cached_batches = 0 if train_calib_cache is None else len(train_calib_cache)
+                log0(
+                    "gptq:using cached training tokens for calibration "
+                    f"(cached_local_batches={cached_batches}, selected_seqs={calib_tokens.size(0)})"
+                )
+                if args.gptq_ar_print_sequences != 0:
+                    log_token_sequences(
+                        log0,
+                        sp,
+                        calib_tokens,
+                        max_sequences=args.gptq_ar_print_sequences,
+                        max_chars=args.gptq_ar_print_max_chars,
+                        header="gptq:train_cache_calibration_sequences",
+                        line_prefix="gptq:cache_seq",
+                    )
+            else:
+                log0("gptq:train cache empty, falling back to autoregressive calibration")
+        elif args.gptq_calib_source not in {"ar", "ar_prompt_bank"}:
+            raise ValueError(
+                f"Unsupported GPTQ_CALIB_SOURCE={args.gptq_calib_source}. "
+                "Expected one of: ar_prompt_bank, ar, train_cache"
+            )
+        if calib_tokens is None:
+            if args.gptq_calib_source == "ar_prompt_bank" or calib_source_used == "train_cache":
+                calib_source_used = "ar_prompt_bank"
+                log0(
+                    "gptq:generating prompt-conditioned autoregressive calibration data "
+                    f"({args.gptq_ar_num_seqs} seqs x {args.train_seq_len} tokens, "
+                    f"prompts={len(GPTQ_PROMPT_BANK_TEXTS)}, temp={args.gptq_ar_temperature}, "
+                    f"batch={args.gptq_ar_batch_size})..."
+                )
+                t_gen = time.perf_counter()
+                calib_tokens = generate_prompt_bank_autoregressive_calib(
+                    base_model,
+                    sp,
+                    device,
+                    GPTQ_PROMPT_BANK_TEXTS,
+                    num_seqs=args.gptq_ar_num_seqs,
+                    seq_len=args.train_seq_len,
+                    temperature=args.gptq_ar_temperature,
+                    batch_size=args.gptq_ar_batch_size,
+                    seed=args.seed,
+                    repeat_penalty=args.gptq_ar_repeat_penalty,
+                    repeat_last_n=args.gptq_ar_repeat_last_n,
+                )
+            else:
+                calib_source_used = "ar"
+                log0(
+                    "gptq:generating autoregressive calibration data "
+                    f"({args.gptq_ar_num_seqs} seqs x {args.train_seq_len} tokens, "
+                    f"temp={args.gptq_ar_temperature}, batch={args.gptq_ar_batch_size})..."
+                )
+                t_gen = time.perf_counter()
+                calib_tokens = generate_autoregressive_calib(
+                    base_model,
+                    device,
+                    num_seqs=args.gptq_ar_num_seqs,
+                    seq_len=args.train_seq_len,
+                    vocab_size=args.vocab_size,
+                    temperature=args.gptq_ar_temperature,
+                    batch_size=args.gptq_ar_batch_size,
+                    seed=args.seed,
+                    repeat_penalty=args.gptq_ar_repeat_penalty,
+                    repeat_last_n=args.gptq_ar_repeat_last_n,
+                )
+            log0(f"gptq:generated {len(calib_tokens)} sequences in {time.perf_counter()-t_gen:.1f}s")
+            if args.gptq_ar_print_sequences != 0:
+                log_token_sequences(
+                    log0,
+                    sp,
+                    calib_tokens,
+                    max_sequences=args.gptq_ar_print_sequences,
+                    max_chars=args.gptq_ar_print_max_chars,
+                    header=(
+                        "gptq:prompt_bank_autoregressive_calibration_sequences"
+                        if calib_source_used == "ar_prompt_bank"
+                        else "gptq:autoregressive_calibration_sequences"
+                    ),
+                    line_prefix="gptq:ar_seq",
+                )
+        log0(
+            "gptq:collecting hessians from calibration data "
+            f"(source={calib_source_used}, batch={args.gptq_hessian_batch_size})..."
+        )
+        hessians = collect_hessians_from_tokens(
+            hessian_model,
+            calib_tokens,
+            device,
+            batch_size=args.gptq_hessian_batch_size,
+        )
+        log0(f"gptq:collected hessians for {len(hessians)} layers")
+        del calib_tokens
+        del hessian_model
+        torch.cuda.empty_cache()
+        quant_result, quant_meta, gptq_debug_report = mixed_quantize_int6(
+            unbanked_sd,
+            {"mlp", "attn"},
+            hessians=hessians,
+            gptq_block_size=args.gptq_block_size,
+        )
+        if gptq_debug_report:
+            jittered_layers = [
+                info for info in gptq_debug_report
+                if info.get("mode") == "gptq" and float(info.get("extra_damp_mult") or 0.0) > 0.0
+            ]
+            fallback_layers = [
+                info for info in gptq_debug_report
+                if info.get("mode") != "gptq"
+            ]
+            max_total_mult = max(
+                (float(info.get("total_damp_mult") or 0.0) for info in gptq_debug_report),
+                default=0.0,
+            )
+            log0(
+                f"gptq:debug layers={len(gptq_debug_report)} "
+                f"jittered={len(jittered_layers)} fallback={len(fallback_layers)} "
+                f"max_total_damp_mult={max_total_mult:.1f}"
+            )
+            if jittered_layers or fallback_layers:
+                for info in gptq_debug_report:
+                    mode = str(info.get("mode"))
+                    extra_mult = float(info.get("extra_damp_mult") or 0.0)
+                    if mode == "gptq" and extra_mult <= 0.0:
+                        continue
+                    total_mult = info.get("total_damp_mult")
+                    total_mult_str = "None" if total_mult is None else f"{float(total_mult):.1f}"
+                    base_damp = info.get("base_damp")
+                    base_damp_str = "None" if base_damp is None else f"{float(base_damp):.3e}"
+                    extra_damp = info.get("extra_damp")
+                    extra_damp_str = "None" if extra_damp is None else f"{float(extra_damp):.3e}"
+                    log0(
+                        f"gptq:debug layer={info['name']} mode={mode} "
+                        f"attempts={int(info.get('attempts') or 0)} "
+                        f"base_damp={base_damp_str} extra_damp={extra_damp_str} "
+                        f"total_damp_mult={total_mult_str}"
+                    )
+            else:
+                log0("gptq:debug no layer required extra jitter or fallback")
+        # NOVEL: Selective ±1 pruning by reconstruction error
+        # Sort ±1 quantized values by their reconstruction error (scale²),
+        # prune least-impactful first until artifact fits target size.
+        # Challenge cap is 16,000,000 decimal bytes total, while this code uses
+        # MiB-style accounting internally for the pruning target. Default to a safe
+        # value below the true cap instead of the old overly-loose 15.9 MiB.
+        target_mb = float(os.environ.get("TARGET_MB", "15.24"))
+        code_bytes_est = len(code.encode("utf-8"))
+        ones_info = []  # (tensor_key, flat_idx, error)
+        for name, info in quant_meta.items():
+            if not (isinstance(info, dict) and info.get("type") == "int6"): continue
+            qk, sk = name + ".q", name + ".scale"
+            if qk not in quant_result or sk not in quant_result: continue
+            q, s = quant_result[qk], quant_result[sk]
+            if s.ndim > 0:
+                ones_mask = (q.abs() == 1)
+                if ones_mask.any():
+                    row_idx = torch.arange(q.shape[0]).unsqueeze(1).expand_as(q)[ones_mask]
+                    flat_idx = torch.arange(q.numel()).reshape(q.shape)[ones_mask]
+                    errors = s.float()[row_idx].pow(2)
+                    for fi, err in zip(flat_idx.tolist(), errors.tolist()):
+                        ones_info.append((qk, fi, err))
+        if ones_info:
+            ones_info.sort(key=lambda x: x[2])
+            def _try_prune(n):
+                tmp = {k: v.clone() for k, v in quant_result.items()}
+                for i in range(min(n, len(ones_info))):
+                    tmp[ones_info[i][0]].view(-1)[ones_info[i][1]] = 0
+                buf = io.BytesIO(); torch.save({"w": tmp, "m": quant_meta}, buf)
+                return len(lzma.compress(buf.getvalue(), preset=9)) + code_bytes_est, tmp
+            no_sz, _ = _try_prune(0)
+            target_bytes = int(target_mb * 1024 * 1024)
+            log0(f"selective_prune: {len(ones_info)} ±1 candidates, unpruned={no_sz/(1024*1024):.2f}MB target={target_mb}MB")
+            if no_sz <= target_bytes:
+                log0("selective_prune: already fits, no pruning needed")
+            else:
+                full_sz, _ = _try_prune(len(ones_info))
+                log0(f"selective_prune: full ±1 prune={full_sz/(1024*1024):.2f}MB")
+                if full_sz > target_bytes:
+                    log0("selective_prune: even full prune not enough, applying all")
+                    _, quant_result = _try_prune(len(ones_info))
+                else:
+                    lo, hi = 0, len(ones_info)
+                    while lo < hi:
+                        mid = (lo + hi) // 2
+                        sz, _ = _try_prune(mid)
+                        if sz <= target_bytes: hi = mid
+                        else: lo = mid + 1
+                    log0(f"selective_prune: pruning {lo}/{len(ones_info)} ±1 values ({100*lo/len(ones_info):.1f}%) to fit {target_mb}MB")
+                    _, quant_result = _try_prune(lo)
+        quant_buf = io.BytesIO()
+        torch.save({"w": quant_result, "m": quant_meta}, quant_buf)
+        quant_raw = quant_buf.getvalue()
+        quant_blob = lzma.compress(quant_raw, preset=9)
         with open("final_model.int6.ptz", "wb") as f:
             f.write(quant_blob)
         quant_file_bytes = len(quant_blob)
@@ -2639,7 +3008,7 @@ def main() -> None:
         tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
         logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
         mtp_num_heads=0, mtp_loss_weight=0.0,
-        ngram_base_vocab_size=args.ngram_base_vocab_size, ngram_dim=args.ngram_dim,
+        ngram_dim=args.ngram_dim,
         ngram_orders=args.ngram_orders, ngram_vocab_sizes=args.ngram_vocab_sizes,
         ngram_num_hashes=args.ngram_num_hashes, ngram_init_std=args.ngram_init_std,
         xsa_last_n=args.xsa_last_n,
@@ -2686,7 +3055,6 @@ def main() -> None:
             f"stride:{args.eval_stride} eval_time:{1000.0 * (time.perf_counter() - t_slide):.0f}ms"
         )
         log0(f"final_int6_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
-        log0(f"final_int8_zlib_roundtrip_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
     if args.eval_stride != 64 and 64 < sw_seq_len:
         torch.cuda.synchronize()
         t_slide64 = time.perf_counter()
@@ -2702,7 +3070,30 @@ def main() -> None:
             f"stride:64 eval_time:{1000.0 * (time.perf_counter() - t_slide64):.0f}ms"
         )
         log0(f"final_int6_sliding_window_s64_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
-        log0(f"final_int8_zlib_roundtrip_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
+    if master_process and args.gptq_prompt_demo_count > 0:
+        prompt_texts = generate_prompt_demo_texts(
+            eval_model,
+            sp,
+            device,
+            PROMPT_DEMO_TEXTS[:args.gptq_prompt_demo_count],
+            max_new_tokens=args.gptq_prompt_demo_new_tokens,
+            temperature=args.gptq_prompt_demo_temperature,
+            seed=args.seed + 12345,
+            repeat_penalty=args.gptq_ar_repeat_penalty,
+            repeat_last_n=args.gptq_ar_repeat_last_n,
+        )
+        log0(
+            "demo:prompt_generation "
+            f"count={len(prompt_texts)} new_tokens={args.gptq_prompt_demo_new_tokens} "
+            f"temp={args.gptq_prompt_demo_temperature}"
+        )
+        for idx, text in enumerate(prompt_texts):
+            text = text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+            if args.gptq_prompt_demo_max_chars > 0 and len(text) > args.gptq_prompt_demo_max_chars:
+                text = text[:args.gptq_prompt_demo_max_chars] + "...<truncated>"
+            log0(f"demo:prompt[{idx}] {text}")
+    if distributed:
+        dist.barrier()
     if distributed:
         dist.destroy_process_group()
 if __name__ == "__main__":

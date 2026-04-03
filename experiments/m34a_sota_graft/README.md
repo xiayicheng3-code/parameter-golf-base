@@ -45,7 +45,6 @@ In short:
 
 The current public interface is fully `NGRAM_*` based:
 
-- `NGRAM_BASE_VOCAB_SIZE`
 - `NGRAM_DIM`
 - `NGRAM_ORDERS`
 - `NGRAM_VOCAB_SIZES`
@@ -84,28 +83,23 @@ Use `GRAD_ACCUM_STEPS=1` for fair single-GPU throughput checks.
 RUN_ID=m34a_sota_graft_order_shared_1xh100 \
 DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
 TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
-VOCAB_SIZE=1024 \
 NUM_LAYERS=11 \
 MODEL_DIM=512 \
 NUM_HEADS=8 \
 NUM_KV_HEADS=4 \
 MLP_MULT=3.0 \
-TRAIN_SEQ_LEN=2048 \
-EVAL_SEQ_LEN=2048 \
 TRAIN_BATCH_TOKENS=262144 \
 GRAD_ACCUM_STEPS=1 \
 VAL_BATCH_SIZE=262144 \
 VAL_LOSS_EVERY=0 \
 TRAIN_LOG_EVERY=25 \
 MAX_WALLCLOCK_SECONDS=600 \
-NGRAM_BASE_VOCAB_SIZE=3072 \
 NGRAM_DIM=112 \
 NGRAM_ORDERS=2,3,4 \
 NGRAM_VOCAB_SIZES=3072,1536,768 \
 NGRAM_NUM_HASHES=2,2,2 \
 NGRAM_INIT_STD=0.005 \
 WARMDOWN_ITERS=4000 \
-TARGET_MB=15.24 \
 torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 
@@ -114,13 +108,11 @@ torchrun --standalone --nproc_per_node=1 train_gpt.py
 Suggested first 8x H100 config:
 
 ```bash
-NGRAM_BASE_VOCAB_SIZE=3072 \
 NGRAM_DIM=112 \
 NGRAM_ORDERS=2,3,4 \
 NGRAM_VOCAB_SIZES=3072,1536,768 \
 NGRAM_NUM_HASHES=2,2,2 \
 WARMDOWN_ITERS=4000 \
-TARGET_MB=15.24 \
 GRAD_ACCUM_STEPS=1 \
 TRAIN_BATCH_TOKENS=524288 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
@@ -131,22 +123,57 @@ systems question for this branch.
 
 ## GPTQ Notes
 
-This experiment branch keeps the legal AR self-generated GPTQ path, but the implementation
-has already been modified to reduce obvious post-training overhead:
+This experiment branch now defaults to prompt-conditioned autoregressive GPTQ
+calibration from a fixed prompt bank, while keeping both cached training-token
+calibration and the older random-start AR path available as explicit options.
+The implementation has also been modified to reduce obvious post-training
+overhead:
 
+- `GPTQ_CALIB_SOURCE=ar_prompt_bank` is now the default calibration source
+- the prompt-bank AR path avoids completely prefix-free generation and is much
+  easier to smoke-test on immature models
+- AR generation now also defaults to a mild repeat penalty:
+  `GPTQ_AR_REPEAT_PENALTY=1.05`, `GPTQ_AR_REPEAT_LAST_N=128`
+- the cached training-token path is still available as an explicit option, but
+  is no longer the default
 - autoregressive calibration generation now uses an incremental cached decode path
 - Hessian collection now supports batched token sequences instead of one sequence
   per forward
-- GPTQ calibration now exposes `GPTQ_AR_NUM_SEQS`, `GPTQ_AR_BATCH_SIZE`,
+- GPTQ calibration now exposes `GPTQ_CACHE_NUM_BATCHES`,
+  `GPTQ_CACHE_MAX_SEQS`, `GPTQ_AR_NUM_SEQS`, `GPTQ_AR_BATCH_SIZE`,
   `GPTQ_HESSIAN_BATCH_SIZE`, `GPTQ_AR_TEMPERATURE`, and `GPTQ_BLOCK_SIZE`
 - AR diagnostics are enabled by default and can be controlled via
   `GPTQ_AR_PRINT_SEQUENCES` and `GPTQ_AR_PRINT_MAX_CHARS`
+- after all final evaluations, the script also prints a small prompt-based
+  generation demo for quick qualitative sanity checks; this does not affect
+  GPTQ calibration
 - default behavior is to print the first `10` generated sequences, with up to
   `2048` characters shown per sequence
 - current defaults are intentionally more aggressive on Hopper-class GPUs:
   `GPTQ_AR_BATCH_SIZE=16` and `GPTQ_HESSIAN_BATCH_SIZE=16`
 
 This area is still under active optimization.
+
+## Training Notes
+
+This branch also exposes an optional suffix-weighted training loss:
+
+- `TRAIN_TAIL_LOSS_TOKENS`
+- `TRAIN_TAIL_LOSS_WEIGHT`
+
+When enabled, the main LM loss gives extra weight to the last
+`TRAIN_TAIL_LOSS_TOKENS` positions of each training sequence. This is intended
+for experiments that deliberately bias training toward the region emphasized by
+sliding-window evaluation with larger `EVAL_STRIDE`.
+
+It also supports a one-time experimental training batch switch:
+
+- `BATCH_SWITCH_STEP`
+- `BATCH_SWITCH_TRAIN_BATCH_TOKENS`
+- `BATCH_SWITCH_COMPILE_TAX_WINDOW`
+
+This is mainly for measuring the first-time compile tax when the compiled
+training graph sees a new batch shape.
 
 ## Fix Logs
 
@@ -169,6 +196,17 @@ materially affect how old logs should be interpreted.
    residual stream.
    This fix is important enough that logs from before it should not be treated
    as faithful evaluations of the intended M34a design.
+
+3. GPTQ calibration source changed more than once during exploration.
+   Older runs may use pure AR self-generation, rank-local training-token
+   caching, or prompt-conditioned AR. New runs default to prompt-conditioned AR
+   from a fixed prompt bank.
+
+4. Some intermediate logs printed a fake `final_int8_zlib_roundtrip_exact`
+   line immediately after the real sliding-window int6 metric.
+   No separate int8/zlib evaluation was actually being run there; that label
+   was just an old logging leftover duplicating the int6 sliding result.
+   New logs no longer print that alias.
 
 ## Known Caveats
 

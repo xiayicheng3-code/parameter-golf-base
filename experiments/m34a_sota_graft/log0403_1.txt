@@ -1,0 +1,184 @@
+root@e07e7dceca95:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_2x4090_smoke_163840_s10 \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> VOCAB_SIZE=1024 \
+> NUM_LAYERS=11 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=3.0 \
+> TRAIN_SEQ_LEN=2048 \
+> EVAL_SEQ_LEN=2048 \
+> TRAIN_BATCH_TOKENS=163840 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=2097152 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_BASE_VOCAB_SIZE=3072 \
+> NGRAM_DIM=112 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=3072,1536,768 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=1e-4 \
+> LATE_QAT_THRESHOLD=0 \
+> WARMDOWN_ITERS=4000 \
+> TARGET_MB=15.24 \
+> torchrun --standalone --nproc_per_node=2 train_gpt.py
+W0403 18:15:51.063000 544 torch/distributed/run.py:803]
+W0403 18:15:51.063000 544 torch/distributed/run.py:803] *****************************************
+W0403 18:15:51.063000 544 torch/distributed/run.py:803] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+W0403 18:15:51.063000 544 torch/distributed/run.py:803] *****************************************
+logs/m34a_sota_graft_2x4090_smoke_163840_s10.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:27382879
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_11 active_layers:[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+world_size:2 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025 ngram_wd:0.0001
+train_batch_tokens:163840 train_seq_len:2048 micro_batch_tokens:81920 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9321 train_time:284ms step_avg:284.30ms
+step:2/20000 train_loss:8.9595 train_time:427ms step_avg:213.30ms
+step:3/20000 train_loss:8.2419 train_time:747ms step_avg:249.01ms
+step:4/20000 train_loss:7.4085 train_time:1101ms step_avg:275.37ms
+step:5/20000 train_loss:6.8297 train_time:1463ms step_avg:292.59ms
+step:6/20000 train_loss:6.4697 train_time:1822ms step_avg:303.62ms
+step:7/20000 train_loss:6.2037 train_time:2182ms step_avg:311.77ms
+step:8/20000 train_loss:6.0826 train_time:2579ms step_avg:322.32ms
+step:9/20000 train_loss:6.1460 train_time:2970ms step_avg:329.96ms
+step:10/20000 train_loss:6.1575 train_time:3326ms step_avg:332.62ms
+step:25/20000 train_loss:5.3299 train_time:8031ms step_avg:321.23ms
+step:50/20000 train_loss:4.1270 train_time:16191ms step_avg:323.82ms
+step:75/20000 train_loss:4.1593 train_time:24133ms step_avg:321.78ms
+step:100/20000 train_loss:3.6821 train_time:32341ms step_avg:323.41ms
+step:125/20000 train_loss:3.3137 train_time:40523ms step_avg:324.18ms
+step:150/20000 train_loss:3.1557 train_time:48275ms step_avg:321.83ms
+step:175/20000 train_loss:3.1401 train_time:56275ms step_avg:321.57ms
+step:200/20000 train_loss:3.0603 train_time:64406ms step_avg:322.03ms
+step:225/20000 train_loss:2.9157 train_time:72688ms step_avg:323.06ms
+step:250/20000 train_loss:2.9822 train_time:80388ms step_avg:321.55ms
+step:275/20000 train_loss:2.9080 train_time:88483ms step_avg:321.76ms
+step:300/20000 train_loss:2.8367 train_time:96474ms step_avg:321.58ms
+step:325/20000 train_loss:2.7932 train_time:104309ms step_avg:320.95ms
+step:350/20000 train_loss:2.8089 train_time:112285ms step_avg:320.82ms
+step:375/20000 train_loss:2.6990 train_time:120548ms step_avg:321.46ms
+step:400/20000 train_loss:2.6747 train_time:128152ms step_avg:320.38ms
+step:425/20000 train_loss:2.6302 train_time:135796ms step_avg:319.52ms
+step:450/20000 train_loss:2.5518 train_time:143868ms step_avg:319.71ms
+step:475/20000 train_loss:2.6268 train_time:152076ms step_avg:320.16ms
+step:500/20000 train_loss:2.5471 train_time:160374ms step_avg:320.75ms
+step:525/20000 train_loss:2.5332 train_time:168531ms step_avg:321.01ms
+step:550/20000 train_loss:2.5246 train_time:176405ms step_avg:320.74ms
+step:575/20000 train_loss:2.5801 train_time:183995ms step_avg:319.99ms
+step:600/20000 train_loss:2.5310 train_time:192101ms step_avg:320.17ms
+step:625/20000 train_loss:2.5397 train_time:201292ms step_avg:322.07ms
+step:650/20000 train_loss:2.3629 train_time:209466ms step_avg:322.26ms
+step:675/20000 train_loss:2.4634 train_time:217016ms step_avg:321.51ms
+step:700/20000 train_loss:2.4619 train_time:224966ms step_avg:321.38ms
+step:725/20000 train_loss:2.4017 train_time:232762ms step_avg:321.05ms
+step:750/20000 train_loss:2.4875 train_time:240808ms step_avg:321.08ms
+step:775/20000 train_loss:2.4326 train_time:248671ms step_avg:320.87ms
+step:800/20000 train_loss:2.3845 train_time:256265ms step_avg:320.33ms
+step:825/20000 train_loss:2.4402 train_time:264237ms step_avg:320.29ms
+step:850/20000 train_loss:2.4046 train_time:272348ms step_avg:320.41ms
+step:875/20000 train_loss:2.4348 train_time:280482ms step_avg:320.55ms
+step:900/20000 train_loss:2.2953 train_time:288438ms step_avg:320.49ms
+step:925/20000 train_loss:2.4019 train_time:296117ms step_avg:320.13ms
+step:950/20000 train_loss:2.3409 train_time:304382ms step_avg:320.40ms
+step:975/20000 train_loss:2.3376 train_time:312640ms step_avg:320.66ms
+step:1000/20000 train_loss:2.3694 train_time:320542ms step_avg:320.54ms
+step:1025/20000 train_loss:2.3088 train_time:328407ms step_avg:320.40ms
+step:1050/20000 train_loss:2.3069 train_time:336218ms step_avg:320.21ms
+step:1075/20000 train_loss:2.3778 train_time:344292ms step_avg:320.27ms
+swa:start step:1100
+step:1100/20000 train_loss:2.3488 train_time:352539ms step_avg:320.49ms
+step:1125/20000 train_loss:2.3594 train_time:359995ms step_avg:320.00ms
+step:1150/20000 train_loss:2.4311 train_time:367385ms step_avg:319.47ms
+step:1175/20000 train_loss:2.4439 train_time:374949ms step_avg:319.11ms
+step:1200/20000 train_loss:2.5867 train_time:382360ms step_avg:318.63ms
+step:1225/20000 train_loss:2.4030 train_time:391094ms step_avg:319.26ms
+step:1250/20000 train_loss:2.2725 train_time:398768ms step_avg:319.01ms
+step:1275/20000 train_loss:2.2176 train_time:406816ms step_avg:319.07ms
+step:1300/20000 train_loss:2.3873 train_time:415025ms step_avg:319.25ms
+step:1325/20000 train_loss:2.4130 train_time:423324ms step_avg:319.49ms
+step:1350/20000 train_loss:2.2313 train_time:431347ms step_avg:319.52ms
+step:1375/20000 train_loss:2.2965 train_time:438904ms step_avg:319.20ms
+step:1400/20000 train_loss:2.2386 train_time:446866ms step_avg:319.19ms
+step:1425/20000 train_loss:2.3103 train_time:455056ms step_avg:319.34ms
+step:1450/20000 train_loss:2.2346 train_time:462777ms step_avg:319.16ms
+step:1475/20000 train_loss:2.2166 train_time:470300ms step_avg:318.85ms
+step:1500/20000 train_loss:2.2906 train_time:478118ms step_avg:318.75ms
+step:1525/20000 train_loss:2.2496 train_time:485838ms step_avg:318.58ms
+step:1550/20000 train_loss:2.1513 train_time:493098ms step_avg:318.13ms
+step:1575/20000 train_loss:2.2463 train_time:500497ms step_avg:317.78ms
+step:1600/20000 train_loss:2.2102 train_time:507925ms step_avg:317.45ms
+step:1625/20000 train_loss:2.3238 train_time:515460ms step_avg:317.21ms
+step:1650/20000 train_loss:2.2819 train_time:522816ms step_avg:316.86ms
+step:1675/20000 train_loss:2.2448 train_time:530501ms step_avg:316.72ms
+step:1700/20000 train_loss:2.2507 train_time:538380ms step_avg:316.69ms
+step:1725/20000 train_loss:2.1476 train_time:546377ms step_avg:316.74ms
+step:1750/20000 train_loss:2.2829 train_time:553924ms step_avg:316.53ms
+step:1775/20000 train_loss:2.3099 train_time:561564ms step_avg:316.37ms
+step:1800/20000 train_loss:2.2848 train_time:569431ms step_avg:316.35ms
+step:1825/20000 train_loss:2.1812 train_time:577600ms step_avg:316.49ms
+step:1850/20000 train_loss:2.2340 train_time:589828ms step_avg:318.83ms
+step:1875/20000 train_loss:2.2220 train_time:597582ms step_avg:318.71ms
+step:1880/20000 val_loss:2.2284 val_bpb:1.3198 train_time:599492ms step_avg:318.88ms
+stopping_early: wallclock_cap train_time:599492ms step:1880/20000
+peak memory allocated: 19217 MiB reserved: 21908 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.2359 val_bpb:1.3242 eval_time:26263ms
+Serialized model: 107035704 bytes
+Code size: 127138 bytes
+gptq:building non-banked model for Hessian collection...
+gptq:generating autoregressive calibration data (64 seqs x 2048 tokens, temp=0.8, batch=16)...
+gptq:generated 64 sequences in 122.1s
+gptq:autoregressive_calibration_sequences count=64 showing=10
+gptq:ar_seq[0] one. This was a turbocharged wireless network with Facebook One. It boasts a large percentage of members. It can drop down to 10 kilometers. Its content allows for a longer period. And it offers enough space to maintain a stronger image. On average, a global, widely-repubced WP server is 700 MW of shared infrastructure. The 2.1-inch Round Rack supports the safety of the 2.1-inch server, making it an extremely diverse option. On average, the automated server is selected using data, which can eliminate the need of the WP server. And so on, more and more WP servers are used by WPs who have communicated with WPs who are interested in the WP server. The WP server has its capabilities to ensure the safety of the WP server. It can also ensure that the safety of the WP server is detected. By choosing WP server servers, WP servers can be detected in the event of a conflict between the WP server and WP servers. By choosing WP servers, it can be detected using data. The WP server can be bothering WP servers if they are interested in purchasing WP servers. More information about WP server servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP server By choosing WP servers By choosing WP servers By choosingWP servers By choosing WP servers By choosing WP servers By choosing WP server By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By choosingWP serversBy choosing WP servers By choosing WP servers By choosing WP servers By choosing WP servers By cho...<truncated>
+gptq:ar_seq[1] atoon summer evening. © BegulfdaleWe are collecting a modern look, but when you launch a new layout, you'll also likewise get the following details. 1. Find out the difference between layout and layout. Layout is one of the best ways to get the layout done. Another suitable way to get the layout done is to get in the middle of the layout. If you feel like it, then you'll be well prepared for the layout. There are five discussions on layout schedule, the layout and Albums. The left hand layout is a layout that brings a more aggressive understanding of the layout and the layout. But if you're staying up to spend a lot of time in the early afternoon, you'll want to get the layout done. 2. Imagine you'll have to get a layout done. This leads to achieving your goals and improvement. But, if you'll do a lot of work, then you'll have to see the layout. Make sure you're cabinets and strike layouts. Once you've got your layout done, you'll be well prepared for the layout and be prepared for the layout. 3. Get a layout done There are four separate discussions on layout schedule. Before you can get the layout done, you will get a handle. If you're not working for an $90k dollar, you'll get some layout done. 4. Read all the discussions on layout schedule and get a layout done. You'll get some layout done. 5. Get yourself a layout done. You'll get a layout done. You can find a layout done. A new layout done is almost guaranteed to customers. But you're laying in the middle of your layout, or working for themselves. You can also simply give yourself a layout done. You can definitely get a layout done. You can get something of the layout done. But, if you can choose from the layout, here are some discussions. 4. Don't ever make sure to learn how to put basic layouts on a drawer. 5. You'll get to a layout done. You might find that you can comfortable layouts. Many layouts are types. There are several layouts for layouts done. Thereare several other layouts for each. The layout done is something that you require to sometimes loo...<truncated>
+gptq:ar_seq[2] 0 years ago, and I didn't think about it. It wasn't until I saw London, I thought it might be "no matter how you'regoing." This is a variation of the same as when London's late names, and kids learned that London has a good names. I have recovered during this time a few years ago when London was a kid, but it wasn't until I saw London last year. Now, we're all looking forward to the cold snow, but I'm really looking forward to it. I'm getting ready. And then I'm focused on the cold snow basics, so I'm looking forward to it. The coldest snow basics, so I'm looking forward to it. I'm throwing a bunched base, but that's a bit too soon, but I'm looking forward to it. At one point, I've found it's a great day to get ready.While there is no significant number of prizes in the coming months, there is a lot of versions offered in the coming months. In this year's edition, Greater Technology Inc.is a multi-generational network that advances multi-generational networking, largely digitizing the multi-generational networking process. Photographs showing the larger prizes of Greater Technology Inc. (GTV , Dutch). Those prizes addressing the larger prizes of GTV are not covered in the coming months. Article 4: Alexander Fischer, Michael Masoniner, "Perfect Animated Animated Edwards Let's Fists Great Animal World". 377 (2017): 19778.The festival of festival ranges is a mix of research and the festival study published by the American Review Technology Education Program at North Youth Advisory School and General School. The ranges are applied to the Advisor Date and Maps, which are in the Advisor Date format, and are divided into two parts: a section which is section 2010.The question is: What is the most important draft explanation of the festival characterization? What is the most important characteristic drafting of the research characters? What is the most important characteristic draft of the research study? What is more important than the most important characteristic drafting? What is the most important characteristic ...<truncated>
+gptq:ar_seq[3] m making a “matter” statement. “I chuckled,” Cooper said. “Abbotic...” My business model of a personal matter. I could never forget that personal matter again was where they could receive abbreviations. But it wasn’t until I went to visit them, they heard a MIND. Her own man, whom COVID-19 was advertised as “there is a vehicle in the hospital.” There was no doubt on Missouri’s time. But I didn’t realize it was the right time to stay home. We had no need to stay home. We had no way to sleep that way as it sat in the face of our opening. We didn’t want to leave. We didn’t want to stop the motel, but we didn’t want to tell me she was “what was the personal matter?” And we didn’t want to ignore her. We didn’t want to stop the face, but she was trying to get burdened. Missouri is a major motel in the United States. There is no type of motel in the United States, but it is not a physical mathematical matter. Missouri’s atmospheric medical vehicles and they’re only used for the state. It sounds like an expensive motel. People often usually have to stop using motels for motels. Missouri recently spokesman Jason Murphy, a senior vice president of electronic medical studies at NYC, said: “It makes sense for people to sleep and grow big, but in a way that’s not that much matter, they get better.” But for me, it is taken an easier shift to activity. Each motorcycle staff might look past and try to prevention. Inside the motel, a group of drinkers seek some inside. “It’s too easy to dig deep down the front,” Murphy said. Austin and Murphy and every other part of the state met, some willing to speak out. “It was awful,” Murphy said. “It’s not a matter, but that’s just the way we’re working.” Murphy added he’s just basically stepping into an “eye” population. “Staying for inside is not an important. They’re all sorts of things that make them accessible. They’re all generally fighting. They’re all caught up in the courts of the United States.” Austin then rolled back to the public with a passport teller teller in his boss’ body ...<truncated>
+gptq:ar_seq[4] 倲. There’s no reason to think that, however, has no clues to the close relationship between the Clinton, American.It’s a very bad thing that can be said in the close relationship with a level of discretion. We’re not afraid that Americans don’ttake a deep breath to offer anything. We’re very afraid of this and not because of the heavy electricity needs of our military. It’s easy to think that some people of any kind feel like the death window is too bad. It’s easy to feel. It’s easy to talk about this. Running across the river is a very important one. I’m single and 8 or 9 years old. I’ve got a bit of dry clouds and my clouds are brought down to the clouds. So I’m going to talk about some of the most important things that I would have liked to do to do in this case I called them. This would be the first time I’ve been planning on developing an office system for a couple years. I’m going to board the team the body room and handles. It’s a very big deal. The clouds are very bad. I’m just going to do the laundry because I’m going to go all the way up. I’m going to do all of this once I’m working on. I’ve had people working on the office system and I’m going to learn to work with them all the time. I’m going to work with them all the way up. That’ll be very much easier and fun. I’m going to work with them all the way up and down. I got to develop, but in 2018, I spent 30 years in Blurb and Warren. I’m going to work with them everything that came outside and works. I’m going to help kindle the first details of what’s happening. ThenI’m going to give them personal information. I’ll handle the first graphics of this. I will go through one to working on this. I will fly in a graphics deck so that every night I wish I could before the “rea and no one else.” I’m going to work with every singleday that they’ll work. Graphics overheads can be very useful. I always put on my hands and I have to do it. I have to listen to someone that I put on my hand and put on my clouds. I enjoying cold. I wait till my back. I can’t do m...<truncated>
+gptq:ar_seq[5] ore Trailer. “We will have Trailer,” Triple told the City Trailer. “This is a great time.” Glover Fire, London, Trailer Services, Inc., has been downgrading all trailers to the Trailer Services where they can fully get involved with the trailer trailer trailer trailer trailer trailer trailer trailers. “The trailer trailer trailer trailer trailers are not just a trailer trailer trailer trailer trailer trailer trailer trailer trailers,” Angela Marshall, Trailer Service, Inc., a law enforcement agency, told the administration. “We have been busily driving the Trailer Services system,” Sabe spokesman Marshall said. “As a modern trailertrailer trailer trailer trailer trailer trailers, we have to fully get involved with the trailer trailer trailer trailer trailer trailer trailer trailers.” “Tripping the Trailer Services system to Trailer Services, we have to do some solutions for the trailer trailer trailers trailer trailers trailer trailer trailers trailer trailers trailer trailer trailer trailer trailers trailer trailertrailer trailers trailer trailers trailer trailers trailer trailers trailer trailer trailers trailer trailers trailer trailer trailers trailer trailer trailers trailer trailers trailer trailers trailers trailer trailer trailers trailers trailer trailers trailertrailers trailer trailers trailers trailer trailers trailer trailers trailers trailer trailer trailers trailer trailer trailers trailer trailer trailers trailer trailer trailers trailer trailers trailers trailer trailer trailers trailer trailer trailers trailertrailer trailers trailers trailer trailer trailers trailer trailer trailers trailer trailers trailer trailers trailer trailer trailer trailers trailer trailer trailer trailer trailers trailer trailer trailer trailers trailer trailer trailers trailer trailer trailer trailer trailers trailer trailer trailer trailers trailer trailer trailer trailers trailer trailer trailer trailers trailer trailer trailers trailer trailers trailer trailer trailers trailer trailer trailers trailers trailer ...<truncated>
+gptq:ar_seq[6] ). It's rare to see that I can raise my muscle and tone into my muscles. Leaving my arms triple half way through myhead, I could not stretch my arms to hear anything, and no one's sat on my arms. The people are on my shoulders, and I'm not sure who came to Columbia, but they are poorly trained, and I've been able to smack the young man, and he's still much better than me. Now I am in the middle of Australia, and I am already strong. I just don't know who stuff is going to be. The supernatural moment isthat we're not accepting the bad men, and I have a good job profile that we want to see and pass to our customers. It looks like the sixth century Muslim Brotherhood. I am, and I am, and I am, and I am, like, who is that they take it? 2011: Right. But somethingI don't want to be able to do. I really like to explain my own experience. It is a muscle mass, and I love to put in places in which I feel like "filing" the Golden Holt. It is a muscle mass, and I look forward to that. And then after I saw myself, I was in a loving home. And soon enough, I had quite a few months into a 15 year old Nick, and I took some Michael off my baby. But then I realized I was a lot, and my sister and I were a big husband. I was a big big husband, and it was like a couple of months ago. I had somany sweet, uncooked baked goodies in the morning, and I didn't want to be at that stage. I was so curse, because I had done everything there, so many today. It deleted me, and I was able to see that today. But then again I was in the middle of Australia, whichexplained that I'm going to have a marriage, not all bad children, I'm going to live with people that I can going to a marriage, and I'm just having a different perception of who I'm based in. I won't be there anymore. It was a 30 year old and 30' old, and I think it's going to be well known and specific to me. I was skidden, and I think I wanted to taste to other things on my mind. I wasn't speaking myself. I didn't need to be triple half thing in my 7 years. There was even a triple ha...<truncated>
+gptq:ar_seq[7] church, for the first time I was in the National. My life was almost invading thing. I managed to be reliant in St.Petersville to be a bowler. So I thought that I should try my two classes since I was about to be a student. Instead, I thought I would be voted winning the opposite box. It’s just a matter of time. Every statement was similar to a winner that I had originally done. I’d also focused on the viewer. I’d also done, in addition, one of our other votes. However, there were a few telltale, lots of choices and some great lots of curious choices. After graduating I felt so good that I was really fortunate with something in myown tenure. There is still another statement to be taken. I’ve read since graduated from Yale School and my first visit in 2016. I’ve had a better relationship. I was better than I’d had in any other person. It’s a lot of great fun. I was always better than I had in myself. It’s been a lot of fun. I’ve been wondering how I’m going to help you to make the most of what I can get. I’ve had a bit of opportunity wrong. I’m a sincere grinder and I’ve been studying in North America for over 10 years. I am a self-sufficient writer and I have been interested in becoming a Virginia writer and I have been celebrating the Department of various employment reforms, from the House of State of Employment to the City of St Pairo, and we’ve been celebrating on the Department of Various Affairs. Even though I was a talking person, I was still always anxious. After a decades of graduating, I was able to check my eyes againand when I got home I was tired. I grew up in this past House and, followed the Great San Front in my heroics. I was also a formerCEO whom I wrote to my parents. I wrote on the songs books for three months ago and I was a writer and I wrote to Thomas the Brothers. I was something that I was celebrating with St. Petersville to make it myself. What do you meaning I want to be a loved something and have a whole life. I want to be acknowledgement and share in those thoughts and support the...<truncated>
+gptq:ar_seq[8] ibility to increase weights. Loanee eggs on the fiesta pieces of the Toronto-Colonial City: The Canadian Planet originally endorsed the Toronto-Colonial City as a piece of the city and its cultural heritage dug off to a distinctive amount of distinctively situated territories. Related Toronto-Colonial City: The Canadish Planet originally ended onto the 1900s in Toronto-Colonial City: The Road to the Planet and the North Pole of the Northern Underground was an obsession in Canada, on the first day of Great Britain’s foregone stream, while the Canadian Planet’s biography came to life. Colonial City: The North Pole of the Northern Underground was an obsession in Canada, on the second day of Great Britain’s foregone stream. Colonial City: The Delta Vincent in 1900was the oldest city in Canada. The Delta’s biographically wrong way was created in 1900 by the Delta Great Asian Planet (publication dated 19), while the Northern Independent Planet (publication dated 19) was the essential artistic and award winning artists. Awards were sought throughout Canada, after the Delta Great Asian Planet written its introduction in the Southern Independent Planet.For more information, visit Colonial City. Colonial City: The Delta Great Asian PlanetPart 1: Great Liberty Part 2: Infinite Part 3: Infinite Part 4: The Kane is very easy to find. There are so many points to be written along with the 2 chalk. This package is designed to be picked up and sold during the following months. The 2 points are designed to be picked and confused. Attractions are on the wrong dead circumstances. You can find the list to find the local redelivery. Attractions are excellent. Please Note that the piece is not yet available.The alternative is demanding activation of our writers. We create, contain and matter the world, by extreme threats that are written by the sovereign corps.Christianity-annual 2017 will be requested by printers that containing them.Check out the new additional information. 2017 laws please contact us to submit your accepted financ...<truncated>
+gptq:ar_seq[9] ️! August 29, 2010 Time: August 1, 2010 2011 Time: August 2, 2010-2011 Time: August 1, 2010-2011 Time: August 1, 201-2011 Time: August 1, 2010-2011 Time: August 1, 2010-2011 Time: August 1, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 1, 2011-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 3, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2011-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2011-2011 Time: August 4, 2010-2011 Time: August 20, 2010-2011 Time: August 6, 2010-2011 Time: August 4, 2010-2011 Time: August 2, 2010-2011 Time: August 4, 2010-2011 Time: August 6, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 3, 2010-2012 Time: August 3, 2010-2011 Time: August 2, 2010-2011Time: August 3, 2010-2010 Time: August 2, 2010-2011-2011 Time: August 2, 2010-2011 Time: August 3, 2010-2010-2011 Time: August 3, 2010-2012 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2011-2011 Time: August 3, 2010-2011 Time: August 2, 2010-2011 Time: August 2, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 1, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 3, 2010-2011 Time: August 4, 2010-2011 Time: August 3, 2010-2011 Time: August 4, 2010-2011 Time: August 3, 2010-2011 Time: August 4, 2010-2011 Time: August 3, 2010-2011 Time: August 4, 2010-2011 Time: August 4, 2010-2011 Time: August 2, 2010-2011 Time: August 5, ...<truncated>
+gptq:collecting hessians from autoregressive data (batch=16)...
+gptq:collected hessians for 69 layers (AR self-gen)
+gptq:debug layers=66 jittered=0 fallback=0 max_total_damp_mult=1.0
+gptq:debug no layer required extra jitter or fallback
+selective_prune: 11010599 ±1 candidates, unpruned=10.04MB target=15.24MB
+selective_prune: already fits, no pruning needed
+Serialized model int6+lzma: 10395560 bytes
+Total submission size int6+lzma: 10522698 bytes
+final_int6_roundtrip val_loss:2.2785 val_bpb:1.3494 eval_time:57005ms
+final_int6_roundtrip_exact val_loss:2.27847172 val_bpb:1.34943929
+final_int6_sliding_window val_loss:2.2383 val_bpb:1.3257 stride:64 eval_time:908294ms
+final_int6_sliding_window_exact val_loss:2.23830789 val_bpb:1.32565552
