@@ -1,0 +1,251 @@
+root@cec995e31416:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@cec995e31416:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_2x4090_promptbank_batchswitch_80k_160k \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> NUM_LAYERS=11 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=3.0 \
+> TRAIN_BATCH_TOKENS=81920 \
+> BATCH_SWITCH_STEP=1000 \
+> BATCH_SWITCH_TRAIN_BATCH_TOKENS=163840 \
+> BATCH_SWITCH_COMPILE_TAX_WINDOW=8 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=2097152 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_DIM=112 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=3072,1536,768 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=1e-4 \
+> LATE_QAT_THRESHOLD=0 \
+> WARMDOWN_ITERS=4000 \
+> GPTQ_CALIB_SOURCE=ar_prompt_bank \
+> t
+bash: t: command not found
+root@cec995e31416:/workspace/parameter-golf-base/experiments/m34a_sota_graft# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@cec995e31416:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_2x4090_promptbank_batchswitch_80k_160k \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> NUM_LAYERS=11 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=3.0 \
+> TRAIN_BATCH_TOKENS=81920 \
+> BATCH_SWITCH_STEP=1000 \
+> BATCH_SWITCH_TRAIN_BATCH_TOKENS=163840 \
+> BATCH_SWITCH_COMPILE_TAX_WINDOW=8 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=2097152 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_DIM=112 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=3072,1536,768 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=1e-4 \
+> LATE_QAT_THRESHOLD=0 \
+> WARMDOWN_ITERS=4000 \
+> GPTQ_CALIB_SOURCE=ar_prompt_bank \
+> torchrun --standalone --nproc_per_node=2 train_gpt.py
+W0403 23:15:17.261000 664 torch/distributed/run.py:803]
+W0403 23:15:17.261000 664 torch/distributed/run.py:803] *****************************************
+W0403 23:15:17.261000 664 torch/distributed/run.py:803] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed.
+W0403 23:15:17.261000 664 torch/distributed/run.py:803] *****************************************
+logs/m34a_sota_graft_2x4090_promptbank_batchswitch_80k_160k.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:27382879
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_11 active_layers:[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+world_size:2 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025 ngram_wd:0.0001
+train_batch_tokens:81920 train_seq_len:2048 micro_batch_tokens:40960 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+batch_switch:enabled step=1000 train_batch_tokens->163840 micro_batch_tokens->81920 compile_tax_window=8
+eval_stride:64 train_tail_loss_tokens:0 train_tail_loss_weight:1.0
+gptq_calib_source:ar_prompt_bank gptq_cache_num_batches:4 gptq_cache_max_seqs:64
+gptq_ar_temperature:0.8 gptq_ar_repeat_penalty:1.05 gptq_ar_repeat_last_n:128
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9304 train_time:169ms step_avg:168.70ms
+step:2/20000 train_loss:9.2090 train_time:211ms step_avg:105.51ms
+step:3/20000 train_loss:8.2261 train_time:341ms step_avg:113.74ms
+step:4/20000 train_loss:7.2146 train_time:475ms step_avg:118.81ms
+step:5/20000 train_loss:6.9838 train_time:605ms step_avg:121.05ms
+step:6/20000 train_loss:6.7673 train_time:734ms step_avg:122.34ms
+step:7/20000 train_loss:6.7665 train_time:867ms step_avg:123.91ms
+step:8/20000 train_loss:6.6746 train_time:1002ms step_avg:125.20ms
+step:9/20000 train_loss:6.3301 train_time:1130ms step_avg:125.59ms
+step:10/20000 train_loss:6.1365 train_time:1262ms step_avg:126.17ms
+step:25/20000 train_loss:4.9207 train_time:3200ms step_avg:128.01ms
+step:50/20000 train_loss:4.1176 train_time:6434ms step_avg:128.67ms
+step:75/20000 train_loss:3.9324 train_time:9685ms step_avg:129.14ms
+step:100/20000 train_loss:3.6564 train_time:12977ms step_avg:129.77ms
+step:125/20000 train_loss:3.5602 train_time:16244ms step_avg:129.96ms
+step:150/20000 train_loss:3.4271 train_time:19504ms step_avg:130.03ms
+step:175/20000 train_loss:3.2580 train_time:22749ms step_avg:129.99ms
+step:200/20000 train_loss:3.0203 train_time:25989ms step_avg:129.95ms
+step:225/20000 train_loss:3.0191 train_time:29239ms step_avg:129.95ms
+step:250/20000 train_loss:2.9760 train_time:32495ms step_avg:129.98ms
+step:275/20000 train_loss:3.0087 train_time:35740ms step_avg:129.96ms
+step:300/20000 train_loss:2.9717 train_time:38999ms step_avg:130.00ms
+step:325/20000 train_loss:2.8390 train_time:42247ms step_avg:129.99ms
+step:350/20000 train_loss:2.8893 train_time:45487ms step_avg:129.96ms
+step:375/20000 train_loss:2.7887 train_time:48752ms step_avg:130.01ms
+step:400/20000 train_loss:2.7043 train_time:52023ms step_avg:130.06ms
+step:425/20000 train_loss:2.5617 train_time:55283ms step_avg:130.08ms
+step:450/20000 train_loss:2.6870 train_time:58537ms step_avg:130.08ms
+step:475/20000 train_loss:2.8906 train_time:61811ms step_avg:130.13ms
+step:500/20000 train_loss:2.7568 train_time:65080ms step_avg:130.16ms
+step:525/20000 train_loss:2.7277 train_time:68340ms step_avg:130.17ms
+step:550/20000 train_loss:2.5993 train_time:71589ms step_avg:130.16ms
+step:575/20000 train_loss:2.4538 train_time:74847ms step_avg:130.17ms
+step:600/20000 train_loss:2.6938 train_time:78117ms step_avg:130.20ms
+step:625/20000 train_loss:2.6550 train_time:81407ms step_avg:130.25ms
+step:650/20000 train_loss:2.7340 train_time:84669ms step_avg:130.26ms
+step:675/20000 train_loss:2.7378 train_time:87926ms step_avg:130.26ms
+step:700/20000 train_loss:2.6464 train_time:91181ms step_avg:130.26ms
+step:725/20000 train_loss:2.6027 train_time:94448ms step_avg:130.27ms
+step:750/20000 train_loss:2.7841 train_time:97710ms step_avg:130.28ms
+step:775/20000 train_loss:2.5815 train_time:100966ms step_avg:130.28ms
+step:800/20000 train_loss:2.5820 train_time:104218ms step_avg:130.27ms
+step:825/20000 train_loss:2.6234 train_time:107482ms step_avg:130.28ms
+step:850/20000 train_loss:2.6702 train_time:110754ms step_avg:130.30ms
+step:875/20000 train_loss:2.4413 train_time:114071ms step_avg:130.37ms
+step:900/20000 train_loss:2.5087 train_time:117344ms step_avg:130.38ms
+step:925/20000 train_loss:2.5900 train_time:120614ms step_avg:130.39ms
+step:950/20000 train_loss:2.7399 train_time:123864ms step_avg:130.38ms
+step:975/20000 train_loss:2.4628 train_time:127118ms step_avg:130.38ms
+step:1000/20000 train_loss:2.5727 train_time:130397ms step_avg:130.40ms
+batch_switch:activated at completed_step=1000 new_train_batch_tokens=163840 new_micro_batch_tokens=81920
+batch_switch:compile_tax_estimate pre_steady_ms:32.88 new_steady_ms:65.67 first_post_ms:44272.01 first_step_excess_ms:44206.34 cumulative_excess_ms:44213.39 window:8
+step:1025/20000 train_loss:2.4479 train_time:180368ms step_avg:175.97ms
+step:1050/20000 train_loss:2.4401 train_time:186369ms step_avg:177.49ms
+step:1075/20000 train_loss:2.4930 train_time:192368ms step_avg:178.95ms
+step:1100/20000 train_loss:2.4419 train_time:198353ms step_avg:180.32ms
+step:1125/20000 train_loss:2.4569 train_time:204915ms step_avg:182.15ms
+step:1150/20000 train_loss:2.2625 train_time:210895ms step_avg:183.39ms
+step:1175/20000 train_loss:2.3721 train_time:216885ms step_avg:184.58ms
+step:1200/20000 train_loss:2.3868 train_time:222880ms step_avg:185.73ms
+step:1225/20000 train_loss:2.3408 train_time:228888ms step_avg:186.85ms
+step:1250/20000 train_loss:2.3962 train_time:234900ms step_avg:187.92ms
+step:1275/20000 train_loss:2.3672 train_time:240943ms step_avg:188.98ms
+step:1300/20000 train_loss:2.3055 train_time:246951ms step_avg:189.96ms
+step:1325/20000 train_loss:2.3598 train_time:252953ms step_avg:190.91ms
+step:1350/20000 train_loss:2.3539 train_time:258954ms step_avg:191.82ms
+step:1375/20000 train_loss:2.3771 train_time:264942ms step_avg:192.69ms
+step:1400/20000 train_loss:2.2395 train_time:270943ms step_avg:193.53ms
+step:1425/20000 train_loss:2.3332 train_time:276928ms step_avg:194.34ms
+step:1450/20000 train_loss:2.2917 train_time:282913ms step_avg:195.11ms
+step:1475/20000 train_loss:2.2826 train_time:288947ms step_avg:195.90ms
+step:1500/20000 train_loss:2.3138 train_time:294955ms step_avg:196.64ms
+step:1525/20000 train_loss:2.2665 train_time:300970ms step_avg:197.36ms
+step:1550/20000 train_loss:2.2644 train_time:306977ms step_avg:198.05ms
+step:1575/20000 train_loss:2.3220 train_time:312977ms step_avg:198.72ms
+step:1600/20000 train_loss:2.3050 train_time:318971ms step_avg:199.36ms
+step:1625/20000 train_loss:2.3186 train_time:324970ms step_avg:199.98ms
+step:1650/20000 train_loss:2.4070 train_time:330959ms step_avg:200.58ms
+step:1675/20000 train_loss:2.4049 train_time:336955ms step_avg:201.17ms
+step:1700/20000 train_loss:2.5588 train_time:342949ms step_avg:201.73ms
+step:1725/20000 train_loss:2.3720 train_time:351558ms step_avg:203.80ms
+step:1750/20000 train_loss:2.2409 train_time:357562ms step_avg:204.32ms
+step:1775/20000 train_loss:2.1859 train_time:363582ms step_avg:204.84ms
+step:1800/20000 train_loss:2.3493 train_time:369580ms step_avg:205.32ms
+step:1825/20000 train_loss:2.3570 train_time:375577ms step_avg:205.80ms
+step:1850/20000 train_loss:2.2008 train_time:381571ms step_avg:206.25ms
+step:1875/20000 train_loss:2.2656 train_time:387575ms step_avg:206.71ms
+step:1900/20000 train_loss:2.2120 train_time:393565ms step_avg:207.14ms
+step:1925/20000 train_loss:2.2753 train_time:399567ms step_avg:207.57ms
+step:1950/20000 train_loss:2.1958 train_time:405570ms step_avg:207.98ms
+step:1975/20000 train_loss:2.1776 train_time:411580ms step_avg:208.39ms
+step:2000/20000 train_loss:2.2556 train_time:417586ms step_avg:208.79ms
+step:2025/20000 train_loss:2.2142 train_time:423579ms step_avg:209.17ms
+step:2050/20000 train_loss:2.1136 train_time:429578ms step_avg:209.55ms
+step:2075/20000 train_loss:2.2053 train_time:435576ms step_avg:209.92ms
+swa:start step:2100
+step:2100/20000 train_loss:2.1899 train_time:441587ms step_avg:210.28ms
+step:2125/20000 train_loss:2.2968 train_time:447740ms step_avg:210.70ms
+step:2150/20000 train_loss:2.2432 train_time:453736ms step_avg:211.04ms
+step:2175/20000 train_loss:2.2046 train_time:459822ms step_avg:211.41ms
+step:2200/20000 train_loss:2.2257 train_time:465860ms step_avg:211.75ms
+step:2225/20000 train_loss:2.1216 train_time:472099ms step_avg:212.18ms
+step:2250/20000 train_loss:2.2572 train_time:478124ms step_avg:212.50ms
+step:2275/20000 train_loss:2.2655 train_time:484306ms step_avg:212.88ms
+step:2300/20000 train_loss:2.2536 train_time:490301ms step_avg:213.17ms
+step:2325/20000 train_loss:2.1618 train_time:496492ms step_avg:213.54ms
+step:2350/20000 train_loss:2.2208 train_time:504348ms step_avg:214.62ms
+step:2375/20000 train_loss:2.1990 train_time:510469ms step_avg:214.93ms
+step:2400/20000 train_loss:2.0349 train_time:516469ms step_avg:215.20ms
+step:2425/20000 train_loss:2.1810 train_time:522616ms step_avg:215.51ms
+step:2450/20000 train_loss:2.2902 train_time:528634ms step_avg:215.77ms
+step:2475/20000 train_loss:2.2676 train_time:534744ms step_avg:216.06ms
+step:2500/20000 train_loss:2.3041 train_time:540737ms step_avg:216.29ms
+step:2525/20000 train_loss:2.2514 train_time:546881ms step_avg:216.59ms
+step:2550/20000 train_loss:2.2336 train_time:552872ms step_avg:216.81ms
+step:2575/20000 train_loss:2.0471 train_time:558998ms step_avg:217.09ms
+step:2600/20000 train_loss:2.1890 train_time:564995ms step_avg:217.31ms
+step:2625/20000 train_loss:2.2410 train_time:571122ms step_avg:217.57ms
+step:2650/20000 train_loss:2.4904 train_time:577131ms step_avg:217.79ms
+step:2675/20000 train_loss:2.1854 train_time:583292ms step_avg:218.05ms
+step:2700/20000 train_loss:2.2328 train_time:589341ms step_avg:218.27ms
+step:2725/20000 train_loss:2.0681 train_time:595460ms step_avg:218.52ms
+step:2741/20000 val_loss:2.1659 val_bpb:1.2828 train_time:599475ms step_avg:218.71ms
+stopping_early: wallclock_cap train_time:599475ms step:2741/20000
+peak memory allocated: 19216 MiB reserved: 42062 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.1701 val_bpb:1.2853 eval_time:24871ms
+Serialized model: 107035704 bytes
+Code size: 145941 bytes
+gptq:building non-banked model for Hessian collection...
+gptq:generating prompt-conditioned autoregressive calibration data (64 seqs x 2048 tokens, prompts=16, temp=0.8, batch=16)...
+gptq:generated 64 sequences in 143.0s
+gptq:prompt_bank_autoregressive_calibration_sequences count=64 showing=10
+gptq:ar_seq[0] The water cycle describes how water moves through the environment. These are mostly beneficial for high performanceanimals like rice, dairy and fruit as well as their advanced applications such as latex and food. Therefore, a more effective water moves through a high-performing pipeline. With so much effort to, water uses so much of territory in a shared environment, and consumers are increasingly out of control. When David Ross suggests this, it is the ideal solution to strengthen the animal’s responsibility for the pipeline.We’re a new location from home. We have rented plenty of weight that I recommend. We had once again been able to get our boxes back on the road or afterwards. There was a lot of trouble with the mailboard everyday and the box was purchased around 8:30am on day one. More on the page. With great deals, and great customer service, we expect to see how the new items arecoming out! This is where we need to be grabbed a bag of deck bags, and EOGSTAVY equipment. I really appreciate that there’s less room for storage than stuff like that. We have open panels to match up an existing model. However, no has to wait until we can makeany kind purchases from the same plant at least. The kitchen itself simply is a great roadmap to staying focused on the best way ever. This has been our place in the center and we want to be jumpy! One of my absolute favored salesmen and girls was Chris Brown who wanted to incorporated micro stores into their hardware. We’ve seen a lot to do but now, it seems like a good thing for us.” With only one kid you could be yourself or your kid at all that’s worth it. This isn’t so much anything other than adult current only planning a house, since we can make use of your kids with their own maintenance. Corner laptops are another great deals for our kids. Don’t forget to go over the furnishings and input from our children. Or if we even use quickly, our kiddies have 3 different layouts - including: - Themeji - Model Luxe - Glue (Model Luxe) - Premade from ethically proven plasti...<truncated>
+gptq:ar_seq[1] A solar eclipse happens when you try to replace it. The American brakes that can cause the engine to be reliable are not substantially reduced and less than five percent of the critical transportation angle has been replaced by a corrosion systemintended to carry out iron traffic postpartum waves at the highest level in the midst eclipse framework. In our experience, however, we are shocked to see the shock from the American brakes forwarding in and scaling their generations without Alvin Johnston or even Thomas McArthur. For more information in the New York Times, go to http://www.NYTimes.com/2015/02/results/result-and-news/ The American brakes that are reliable can help you identify and understand your potential frameworks. You may want to discover five different rules for replacing those rules. Academia and Europe are the ones who major funding items. Amongst the most common homes in Europe, this range is average from 620/2015, to this range from just 119/00 unless changed to a more euro. According to an excellent list, “house owner conditions come between the two disputed fronts.” The bold climate is heated to $9 a week and you need to knowabout the American brakes before you go out. Unfortunately, when you say you can start heated at 45 degrees Waze. After you get saw a solar system, you saw a probably nothing worse than usual if the American brakes rising in that hour. Ministry is development is actually crucial. One of the most important thinkers Wikipedia (Wiki) is de-streaming. It is like something like “Is this Bluecover?” This device page provides information on what it issues your surroundings conducted by you. You may need to scanning or changebecause the lineages here are not attributible, but they don’t bend. You will also have to scan your hold. Whatever happens when your postpartum crashes if your body tries to keep you in the midst of a week or today, EXCLUDENCES: 1) Expand the brand NATION PHYSIC Building Scene 2013 EndangerTheater Problem: Expands A Last Through Tradition? Being building on...<truncated>
+gptq:ar_seq[2] Scientists recently reported that the cellular pathology of Mexico and Laos became understood by the genus "Confirmation Circle". In storing various types of methane they then placed matching kinase levels on glutamors (GML). They have increased density, which is observed when glutamors are literally dead. The main attributes of this genome include: - Structure: Long-term code analysis with advanced ginomics using the LLG-ATS Program, and followed by the GCN-APOSP, this matching kinase project connects to Mexico and Canada. Also, Scientists at the US Methodology Council (UMC) report that the result is less delay in order to preventeasier fight for clones. The strategies for developing glutamors, both metastatized and characterized, have given them full accessto theatre. In this way, they can be used in any kind of humanitarian activity. Based on the global global glutamorphic advancing model, this glutamorphic is lite or live. According to Scientists, 32 per cent of the glutamors are attributable. They are linked to two different ways: - Longevity (Longevity/Longevity), Long-term code analysis, and Long-term access. Based on these results, Kosubtopayer has pointed out that GML programs increase code 10-5, which means they have increased efficiency by 24 hours. World Scientist Test Practice Projects in Mexico and Laundry Unless found by American Fans and Representatives Association.Posted April 4, 2008 Professor Emelier, brought together his works, indicated the implications of structures for ranging from number options, harvesting and extending—the matchup between the two systems—with announced measures, according topics in the process, about questionable concepts and the possibility of investigating more fixed value chains. By the way, K1 month against the 97% counts of codes and consensus that failed to adapt to public speaking processes, extra variations in judgment improve evidence of common sense and consistent value (MPV) poveruiest. In a leading sciential report from professor Emelier, I had concluded th...<truncated>
+gptq:ar_seq[3] Weather forecasts are created by combining the majority of the Ouerli Peninsula, which is being developed for research and research in a network of industrial agricultural research facilities, Xander Schutt, MSH, John F. Shirkowsky, Professor of Science, Uptown, Georgia. Image: Alliance between the Western and East European Union The annual Grand Canyons Society of Orlando, which is held in the state of Grand Canyon, will be attended by cyclists who participated in the Ouerli Peninsula opening a pre-release funeral on Thursday, January 12, 2015 at the Ouerli’s Town Hall. “We are extremely delighted by the fact that we have counted the incomes of our professional customers and company,” says Michael Carroll, chairman and Chief Executive officer of the Ouerli Peninsula Town Centre. “We love those creativity and are very comfortable with this space.” Tickets at 4:30 pm are available online at www.amazzard.com. For more information, visit www.amazzard.com.79.com promo bookmasterpage.com Nowadays, we recently bought a newcopy of Latin, English and French for iPhone Mobile Download (like that I don't mind). After the publishing process game brought user in to our realistic lives and were loving as we left for the journey down in an east as we shitfully acted like one stupid antique, staff however possible. The reason you may not have enjoyed a new copy of Latin is that its statues are hazardous to the travelers and households. There are plenty of non-commons, and the non-commons can be safely bought from the Jewish cultural center at the Old School of California. We had been to written that in certain issue was more than just an outside life; it was just as much as it ever was pages on iOS. The archive of authors recently subscribed to the Latin Negro Code Apload account. Downloads: - This, figureinear impact on sound and control from the record for VPD - 1976 250 530 - 2printActivision3 title in antenna. Datability is viewed Monday, February 8th.Roofing isn't just awesome concept that a brand likes. It is a great way...<truncated>
+gptq:ar_seq[4] The history of the printing press began with a sketch. There were no reports of tight elbow straps, so there was noreport anyone had anything to write about. When we exhibited the peeled and finished dapper, which is one of those prints we used in a printer's notebook offering a new kind of radiator. We also used a cardio (the factory van Xos) or an adventurous printer (nota printer of any kind but still the other). There were other options for the dapper (particularly the same printer that we used asa RV), e.g. 80 Dapper and Magica. So while I was really happy with the prints we used in our notebook offering, we were very happywith the peeled and finished dapper. Being able to dapper on some printer's notebooks is pretty strange now, but our dapper counter was really awesome and could characterized the design and concept of the prints we used in the 20s. In both the dapper and Magicaprints we used for the making of the prints we used in the 2016 Van Peter Karkley launched the series of prints we used at different stages of the past, and they were useful in their products, as well as having such a lot of construction to compare to the correct printed ones. Cardio work was made with a high level of charm, which is something you can't use that much... Unbeatable! We didn't use games, and, though, it was greatly appreciated by the staff who worked and created a new kind of screen. So while we came across this image from the printer back in 2015, the prints I use didn't use in any kind of screen games would have been very such arrangements as super comparatively. Not non-comparatively, how many printers were using games that I've used, and also most useful tools that area and basically none of them with a magical construction, as well as on both the Game Fox prints can be used on stage along with its irritated feelings. Usually the elastic body just keep pouring at it! It is simply not a bad thing now that there wasn't any burst in my life... Alzheimer's is somewhat dangerous but can't remember all that. Therefo...<truncated>
+gptq:ar_seq[5] Public libraries provide more than just books. It is also a national educational experience, with generous culturalfeatures such as the Main Library and the Summer Coast. The concept of the residential library typically supplies a 20/30 investment in our area. While honoring our local community, I am here to share my amazing insights on what is happening in this site. You can find more information about this project. In addition to the further developments, you can get help from Brett Stone Solutions and others who rely on Highway Specific Engineering to meet their needs. The most important advice is how you build Highway SpecificEngineering for your home or business. With over 15 years of experience in the main library and in the home support of our public libraries and their office, we are able to make a budget for you and your family at the most economical rate. All of our sites are located along the Highway Specific Engineering Center. Our dedication to ensuring our library has the essence of productivity and standards that help enhance real estate goals. As a member of our community, we have been able to provide high-performing builders with exceptional libraries. We offer a variety of real estate services throughout the USA. The most important factor is how you can make sure that your Highway Specific Engineering coach will work in this site.GREADER REMOVE Your best shopping experience in NorthCornersville. It’s easy to find the perfect destination for any night and nights and holidays. Complete with relax, garden, cottages, & sculptures. View our website offered by the participant community including: - Engineering - Packaging - Planting - Tourism (an excellent public library) - Theatre - Lounge Surroundings - Dining rooms - Feel free to narrow on your ticket from the walk in front of the parking lot (by theatres of etc) - Adventure books, French Candle Castle and polo ducks - Baby pond - Singing “Kara” for a moment - Mutant books - Wine & Beer included with open antique dresses - Product Nightlife is a...<truncated>
+gptq:ar_seq[6] In many schools, group projects help students make a difference in the early years of their school. Imagine an electronic medical suite within your studio, or studying all the way to Westfield. You can expect a vibrant, intense take on people’s relationship with female female couples. Specializing in CST: if you want to learn more about Purdue University or you want to take the time to teach others. One course was taught by Dan Allen from World Independent Projects. CST is a free stand-alone applicationthat allows students to use their own observations and instructions when they are searching for “problems” with their problems. Assoon as possible, your school will back off through the process of: - Providing you with a list of individuals who have already been linked to their problems; - Supporting children for adults to implement problems in their teenagers; - Training the Children forFemale Scholarship Grants; and - Publishing the material online. They’ll also be interested in the Google+ course with organizations such as Tribune, MongaWork!, Helen Barnes & Marketing, World Standard Arts & Worker (WSAW), iPods for NBC, NoiseJumper Festival and TOSCOING. If you are interested in my school, contact me to explain more about Smith College. I have experience with most of the college campus and have teacher project work on a free site where I’d like to study arbitrary technology and help parents navigate the dangerous strip machine. I also enjoy working with local conferences developed by female disciples and individuals who are early-developmental or mentally able to host exhibition identity, etc. I guarantee not all visitors can club in one of my school!Directed by Amy Hollins (CSLLFAS). Academica Urbuk two books on my wife is a loved one's love due to the enthusiasm of the old, restore-for our family. Here you are for this year’s creative director’s contract; in which we will come from the four towns and once again messages being recounted are transferred back into their own. Family/Home! by I know it’s very go...<truncated>
+gptq:ar_seq[7] Recycling aluminum saves energy because it comes with more than a hundred available solutions. Available models aredesigned to be a bowl of plastic fiber and set aside in various environments. Each process is measured by the amount of calculation possible to complement its requirements, and demand for each logo to play its part on its journey. - Savage all Concealer of Concealers - Energy-efficient construction - Leaked international conveyance - Airflow systems - Humidity ranges - Water tightening - Compositive coating - Drain lotion - Radiation systems - Motorized water filters - MTP requirementsAborting to Islam Only one hopes may have been the problem, but the program is only a step away from killing Islamic immigrants who are ignored. They do not have tobet on all of them. People “show” in their mouths There’s a little sketch in that program. An opinion, but one things are done in the fields of science and television. Nobody is expecting the idea of ignoring these people. This program, obviously, is not just to given equitable advice but to guidance for the artists of these past have to be defined by the amount of money it is possible to do, trust, serve or otherwise become in a world where there is limitations only.” Truthfully, “those people who are vulnerable to equitable litigation” are more likely to come back. There are thousands of taxpayers, people and families around the world who are not particularly aiming to ignore this program. God doesn’t necessarily seem to have advantages that we should have to built down a little. Advantage Divinity is not just a complete Program of generosity, but a certain priority. A, B, L, G, S, F, T, ST, GP, M, PL, M, Z, M. We can help prepare for the Gods from everyife’s class base of honors right now. Last year, the ESPN was once again to Thomas the Brown, the man who suddenly exploded on foot in Stellow club in Vanderbeids. The company co-started a two-year lose in the last year and has didn’t even give it would be equitable for the size of the Russian army. This y...<truncated>
+gptq:ar_seq[8] The following guide explains how to start a compost bin. Bloggers are delighted to have the informative article delivering on questions such as: Can I buy bloggers? Today’s Appeals Director, Microsoft is proud to announce the appointment of Fuchsia Spark from the Blue Book Production campaign, which recently got the opportunity to speak to them about their successes from theregion. The apprentice of Spark may also be asked about options for producing bloggers and will have some extra funds to add to it. Information on this informative article delivers on questions such as: Can I buy bloggers? Today’s Appeals Director of Microsoft,Microsoft Group Initiatives, is proud to announce the appointment of Fuchsia Spark from the Blue Book Production campaign. Organizations wanting to grow faster will also be affected by the compost bin. Last week, Fuchsia Spark released their latest technology on its premier network which is set up in Intel Central, offshore and iron oven companies. The latest technology on the Asian network (pucus) has been included in the region’s popular Independent Networks (INNN) Application program. In addition to the latest Instagram articles on India (INN) and the latest Independent Networks on India (INN), Fuchsia Spark additionally applies to all of its INN’s technology for new details and visitors. The latest INN’s INN pucus internet search with Likes delivered straight to your media. Helpful statistics from INN areas include: Embrace a love of the past 5000 years whilst under tapping opportunities for building industry experts, support and similar for the right to left either get to you at all times or stop on some and enjoy with your location. The Appeals Due to death circumstances, the hardest lane long-term option will be from Aprises when it comes to an INN flight via FPSCSC Health officials are already delighted to have their Vision show released this week. After the matter has been a longsince 2016, Microsoft said Director of News Reporting and Info took another step out of the way wi...<truncated>
+gptq:ar_seq[9] Here are three ways to reduce food waste at home. Four HABI supplement: Phytostix 100% added vitamin A, Bipolar-free fatty acids Sulphate 100% remain fresh and equipped with delicious cooking techniques. Click here for more information about making it easy to use. Even as a result of the heavenly warwicked muffin tip, the wild leap over to pass constructive clothes (the beginning of a romance, the race of waves and the living space) is too considered. It is not just natural but also revealed in the event of the disease or the situation of the events caused by the disease and the repressive diseases. In fact, admittedly the world's most important tournament in its past has really remained a leap at home. Even in the first day of the race, the world's most important part of the race is food. There are always a lot to be done this whole and everything needs to be during the ralph city. Meanwhile, there are multiple major bodies which include mingling municipalities, wagongou halls, southern flats, and theatres. These likely will truly turn out to be a very positive part of life in the race. As an example, Americans feel immensely disproportionate about their own health and some probably the most reason they wanted to do that. When you seeking a family for yourself, it is essential to enter this register to make an informed decision. This allows you to write comprehensive claims online, instead of a click here. For more information on the Google Platform Trade Content page, call at 1-45109.Submit name condition for the site duty of a confirmation defect and please be aware that allowing any and all conditions be taken by third parties to submit and the receipt for the site confirmation defect will be sometime it appears in the confirmation defect. It is not a submission, or endorsement of any, any conflict or defect with and its identity intended for contained in room dressing and sink policies. The date of the Receivability Defect (Enactance) Defendants have “Will you agree” to this Order, and none to consider if th...<truncated>
+gptq:collecting hessians from calibration data (source=ar_prompt_bank, batch=16)...
+gptq:collected hessians for 69 layers
+gptq:debug layers=66 jittered=0 fallback=0 max_total_damp_mult=1.0
+gptq:debug no layer required extra jitter or fallback
+selective_prune: 6170673 ±1 candidates, unpruned=13.12MB target=15.24MB
+selective_prune: already fits, no pruning needed
+Serialized model int6+lzma: 13610856 bytes
+Total submission size int6+lzma: 13756797 bytes
+final_int6_roundtrip val_loss:2.1762 val_bpb:1.2889 eval_time:56571ms
+final_int6_roundtrip_exact val_loss:2.17618421 val_bpb:1.28885887
