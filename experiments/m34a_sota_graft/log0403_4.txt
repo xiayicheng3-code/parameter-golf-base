@@ -1,0 +1,182 @@
+root@8d9eb1468432:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@8d9eb1468432:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_1x_smoke_fullchain \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> NUM_LAYERS=11 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=4.0 \
+> TRAIN_BATCH_TOKENS=81920 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=204800 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=240 \
+> NGRAM_DIM=112 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=20480,10240,10240 \
+> NGRAM_NUM_HASHES=2,2,2 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=1e-4 \
+> TRAIN_TAIL_LOSS_TOKENS=512 \
+> TRAIN_TAIL_LOSS_WEIGHT=2.0 \
+> LATE_QAT_THRESHOLD=0.4 \
+> WARMDOWN_ITERS=4000 \
+> EVAL_STRIDE=512 \
+> GPTQ_CALIB_SOURCE=ar_prompt_bank \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+logs/m34a_sota_graft_1x_smoke_fullchain.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:37135455
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_11 active_layers:[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+world_size:1 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025 ngram_wd:0.0001
+train_batch_tokens:81920 train_seq_len:2048 micro_batch_tokens:81920 iterations:20000 warmup_steps:20 max_wallclock_seconds:240.000
+eval_stride:512 train_tail_loss_tokens:512 train_tail_loss_weight:2.0
+gptq_calib_source:ar_prompt_bank gptq_cache_num_batches:4 gptq_cache_max_seqs:64
+gptq_ar_temperature:0.8 gptq_ar_repeat_penalty:1.05 gptq_ar_repeat_last_n:128
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9293 train_time:160ms step_avg:160.37ms
+late_qat:enabled step:1 scale:0.2656
+step:2/20000 train_loss:9.0743 train_time:322ms step_avg:160.94ms
+step:3/20000 train_loss:8.6913 train_time:528ms step_avg:175.99ms
+step:4/20000 train_loss:7.9695 train_time:728ms step_avg:181.94ms
+step:5/20000 train_loss:7.2809 train_time:932ms step_avg:186.38ms
+step:6/20000 train_loss:6.7924 train_time:1113ms step_avg:185.43ms
+step:7/20000 train_loss:6.4604 train_time:1317ms step_avg:188.20ms
+step:8/20000 train_loss:6.1874 train_time:1793ms step_avg:224.08ms
+step:9/20000 train_loss:6.0153 train_time:1901ms step_avg:211.19ms
+step:10/20000 train_loss:5.9361 train_time:2088ms step_avg:208.78ms
+step:25/20000 train_loss:5.4565 train_time:4010ms step_avg:160.40ms
+step:50/20000 train_loss:4.2360 train_time:7214ms step_avg:144.28ms
+step:75/20000 train_loss:3.8815 train_time:10401ms step_avg:138.69ms
+step:100/20000 train_loss:3.6741 train_time:13601ms step_avg:136.01ms
+step:125/20000 train_loss:3.5073 train_time:16804ms step_avg:134.43ms
+step:150/20000 train_loss:3.3848 train_time:20017ms step_avg:133.44ms
+step:175/20000 train_loss:3.2101 train_time:23200ms step_avg:132.57ms
+step:200/20000 train_loss:3.0302 train_time:26429ms step_avg:132.14ms
+step:225/20000 train_loss:3.0258 train_time:29677ms step_avg:131.90ms
+step:250/20000 train_loss:2.9666 train_time:32916ms step_avg:131.66ms
+step:275/20000 train_loss:2.9542 train_time:36108ms step_avg:131.30ms
+step:300/20000 train_loss:2.8761 train_time:39314ms step_avg:131.05ms
+step:325/20000 train_loss:2.7897 train_time:42518ms step_avg:130.82ms
+step:350/20000 train_loss:2.7613 train_time:45720ms step_avg:130.63ms
+step:375/20000 train_loss:2.7965 train_time:48918ms step_avg:130.45ms
+step:400/20000 train_loss:2.6567 train_time:52125ms step_avg:130.31ms
+step:425/20000 train_loss:2.5772 train_time:55316ms step_avg:130.16ms
+step:450/20000 train_loss:2.6583 train_time:58577ms step_avg:130.17ms
+step:475/20000 train_loss:2.7764 train_time:61791ms step_avg:130.09ms
+step:500/20000 train_loss:2.7465 train_time:65025ms step_avg:130.05ms
+step:525/20000 train_loss:2.6739 train_time:68228ms step_avg:129.96ms
+step:550/20000 train_loss:2.5759 train_time:71459ms step_avg:129.92ms
+step:575/20000 train_loss:2.4929 train_time:74654ms step_avg:129.83ms
+step:600/20000 train_loss:2.5994 train_time:77843ms step_avg:129.74ms
+step:625/20000 train_loss:2.6106 train_time:81042ms step_avg:129.67ms
+step:650/20000 train_loss:2.5276 train_time:84243ms step_avg:129.60ms
+step:675/20000 train_loss:2.5581 train_time:87437ms step_avg:129.54ms
+step:700/20000 train_loss:2.5794 train_time:90638ms step_avg:129.48ms
+step:725/20000 train_loss:2.4240 train_time:93844ms step_avg:129.44ms
+step:750/20000 train_loss:2.5898 train_time:97045ms step_avg:129.39ms
+step:775/20000 train_loss:2.5859 train_time:100417ms step_avg:129.57ms
+step:800/20000 train_loss:2.5451 train_time:103766ms step_avg:129.71ms
+step:825/20000 train_loss:2.5760 train_time:106964ms step_avg:129.65ms
+step:850/20000 train_loss:2.5184 train_time:110230ms step_avg:129.68ms
+step:875/20000 train_loss:2.4350 train_time:113500ms step_avg:129.71ms
+step:900/20000 train_loss:2.4166 train_time:116742ms step_avg:129.71ms
+step:925/20000 train_loss:2.5087 train_time:119945ms step_avg:129.67ms
+step:950/20000 train_loss:2.5758 train_time:123152ms step_avg:129.63ms
+step:975/20000 train_loss:2.4021 train_time:126351ms step_avg:129.59ms
+step:1000/20000 train_loss:2.4673 train_time:129666ms step_avg:129.67ms
+step:1025/20000 train_loss:2.3559 train_time:132903ms step_avg:129.66ms
+step:1050/20000 train_loss:2.4486 train_time:136143ms step_avg:129.66ms
+step:1075/20000 train_loss:2.3644 train_time:139362ms step_avg:129.64ms
+swa:start step:1100
+step:1100/20000 train_loss:2.4238 train_time:142561ms step_avg:129.60ms
+step:1125/20000 train_loss:2.3886 train_time:146060ms step_avg:129.83ms
+step:1150/20000 train_loss:2.4205 train_time:149257ms step_avg:129.79ms
+step:1175/20000 train_loss:2.4593 train_time:152680ms step_avg:129.94ms
+step:1200/20000 train_loss:2.3850 train_time:155905ms step_avg:129.92ms
+step:1225/20000 train_loss:2.5274 train_time:159509ms step_avg:130.21ms
+step:1250/20000 train_loss:2.3912 train_time:162709ms step_avg:130.17ms
+step:1275/20000 train_loss:2.4378 train_time:166168ms step_avg:130.33ms
+step:1300/20000 train_loss:2.3818 train_time:169350ms step_avg:130.27ms
+step:1325/20000 train_loss:2.4114 train_time:172752ms step_avg:130.38ms
+step:1350/20000 train_loss:2.3956 train_time:175941ms step_avg:130.33ms
+step:1375/20000 train_loss:2.5753 train_time:179366ms step_avg:130.45ms
+step:1400/20000 train_loss:2.3781 train_time:182568ms step_avg:130.41ms
+step:1425/20000 train_loss:2.3703 train_time:186054ms step_avg:130.56ms
+step:1450/20000 train_loss:2.3777 train_time:189250ms step_avg:130.52ms
+step:1475/20000 train_loss:2.3418 train_time:192720ms step_avg:130.66ms
+step:1500/20000 train_loss:2.4110 train_time:195855ms step_avg:130.57ms
+step:1525/20000 train_loss:2.3686 train_time:199264ms step_avg:130.66ms
+step:1550/20000 train_loss:2.4016 train_time:202449ms step_avg:130.61ms
+step:1575/20000 train_loss:2.3014 train_time:205866ms step_avg:130.71ms
+step:1600/20000 train_loss:2.3724 train_time:209049ms step_avg:130.66ms
+step:1625/20000 train_loss:2.2998 train_time:212462ms step_avg:130.75ms
+step:1650/20000 train_loss:2.2764 train_time:215657ms step_avg:130.70ms
+step:1675/20000 train_loss:2.3131 train_time:219063ms step_avg:130.78ms
+step:1700/20000 train_loss:2.3180 train_time:222247ms step_avg:130.73ms
+step:1725/20000 train_loss:2.1755 train_time:225663ms step_avg:130.82ms
+step:1750/20000 train_loss:2.2498 train_time:228853ms step_avg:130.77ms
+step:1775/20000 train_loss:2.3044 train_time:232262ms step_avg:130.85ms
+step:1800/20000 train_loss:2.2518 train_time:235450ms step_avg:130.81ms
+step:1825/20000 train_loss:2.3253 train_time:238858ms step_avg:130.88ms
+step:1834/20000 val_loss:2.2930 val_bpb:1.3580 train_time:240084ms step_avg:130.91ms
+stopping_early: wallclock_cap train_time:240084ms step:1834/20000
+peak memory allocated: 21206 MiB reserved: 22980 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.3022 val_bpb:1.3635 eval_time:27980ms
+Serialized model: 138075192 bytes
+Code size: 145665 bytes
+gptq:building non-banked model for Hessian collection...
+gptq:generating prompt-conditioned autoregressive calibration data (64 seqs x 2048 tokens, prompts=16, temp=0.8, batch=16)...
+gptq:generated 64 sequences in 130.6s
+gptq:prompt_bank_autoregressive_calibration_sequences count=64 showing=10
+gptq:ar_seq[0] The water cycle describes how water moves through the environment. The Organization of Conservatory Interventions analyzes the quality of water in the environment, and reduces control. While the options are evident in offering water exceptions, they are also suggested to break through the initial fifteen-minute publication. For more information, see the Organization of Conservatory Interventions. 10:30am The Department of Environmental Resource Conservatory is a state of dynamic integration between the lower environmental projects and environments. The scientific plan is to address that potential market share on real estate, and toensure the environment projects are customised. However, a state has some important resources on need behavior which affect themselves. Conservation periods upon the science community and work agencies are developing and explored through the ACAL/ENTAL fundraiser. Some constitute a work department (as the ECUSTA), resulting in environmental imbalance (e.g. – clay stomach) and cost production (e.g. human health dysfunction). There are also several various benefits of rolling out to the internet and harvesting help fromthe ECUSTA. Projects that reduce environmental costs of water will be useful to environment projects. Conservation periods alike comply with the following jurisdiction: Projects that reduce environmental costs and work agencies are participating in the annual event for each minute inquiry. There is an example of a distinction between health dysfunction and the potential market value of electricity. All these announcements are those of the four hour debate-event:(1) annually only if the noise is shown is slumped any type of punishment, (3) any other project without limitation, (3) anyone who has receives the work event must consider the need for any occasional scientific interests (4) or by reasonable occasions (4) to consider their ability to reduce environmental costs. (4) both the exit tracking state and manufacturing facilities from each minute, and face the reported d...<truncated>
+gptq:ar_seq[1] A solar eclipse happens when you try to replace it. The American Research Institute (ARWI) is a major dietary research institute that focusses on the critical transitional disorder and low-cost depression in the entire state. The present study was last updated with an approximately 60,000 people, in which only 34 of the present study was feasible. Eclipse ARWI ARWI is a rareperson in the disability of people on the web screen and generally creates an European civic account. This account will definitelybe available for you to address general problems if you’re not interested in applying it in this article. You should also look into the application questions for a single study: - Good skills and experience. - A good understanding of your personal level of knowledge - Exercise skills and experiences that are good for your health - A good access to this article will not only be delivered the same way if you prefer to reach the web - Good skills and experiences. - REVERTISTABLE On the web, this is one of the most important parts of university baseball (they are the best possible), to generally use them to purchasers. With this there are many of those in our list of happy handy clothing options. This is a major problem because of this. With this virtual experience, it’s effectively predictable in the study and as a result, people can still be clearly out of their own company. These senior clothing options are virtually unique to users who are vulnerable to those in that stage. These seniors who are governed by users demanding interestin the adjustment plan for application and the organization themselves. It is likely that it’s a virtual experience. It’s capable of enabling adjustment into problems that are predictable in the studies. You can understand how to use these options and how to use them. Even if it’s important to you, you’ll be prepared to learn how to use them. You can also learn how to draw your own experience if you aren’t a listed discipline or product. With this virtual experience, you can exercise yo...<truncated>
+gptq:ar_seq[2] Scientists recently reported that the review had not been made available for their review, so that all major groupswere using the Scientist’s side. “The group of reviewers are asked to investigate the such things as kids,” said Adam Doors, vice president and CEO of the Scientists Foundation. “The interest they are seeing is their expectations on how they are looking at them.” “It doesn’t make it personal,” he said. “They should be careful with how they are teaching their stories,” he said. ProfessionalRichard Angels, professor of psychology and scientific science at Biogeneous Medicine and Diabetes Cancer Society, has been awarded an outstanding High School study and a research college student at NG-Schools, one of the nation’s five companies. “They know that interest throughout our study, we can both learn from a child's disabilities,” he said. “At the Science of science, we are more than wished to know that the environment is going to exist.”Re: How does the fragrance of the fragrance adventure and might work with you? As the fragrance is led by John Howard, it’s easier to clearly have your skills and needs. As we have seen, five different fragrances come from our lives, and they are one of the most unusual participants in the history of fragrance fragrance. This is thefirst fragrance in the country, meaning the riverfront is very chilly. It is going to be a surprise skating until the night beforeEuropean Caribbean. Last year, when five previous fragrances were placed on a tropical border in the country, four fragrances had a helmet marked by their actual life. These fragrance was designed to replace various adventures. Each way it was designed to deal with fragrances. They extended and stayed at room temperatures to be considered the harmonious and fragrance. In the middle of the night, they had no riverfronts and a tropical walls. These fragrances were quite frequently manipulated by an architecture that could have easily been claimed for years. Headlines and such fragrances are environmentally benefittin...<truncated>
+gptq:ar_seq[3] Weather forecasts are created by combining widespread wide ducks and bugs in any surface. Evaluating your music andbrand new artists from Germany, we have gotten some of the ability to move X-Men into their original pieces. We will be expected to offer a request for the special issue. However, we only have full advantage of both our musicals and footwear. In this way, we are all quite afraid of the fact that we may be mostly stripping the wild X-Men into their original pieces. For this reason, we will begin discussing what that means and will begin discussing the music. And then, we will provide a full basic look to understand thechallenge we will minimize today and continue Trust! Our Music is incredibly important to us. We are looking for some great placesto listen, not just to score, but to learn how to score in each one. If you want to work together or forward a German musical, ourenvironment is already taking advantage of our energy. So it is better to explain how to combine our place with the best work to improve our ability.Building the City of Texas Building Technology International, the Boston International Council (BIC) is holding a broad term for internationally health services systems (BIC). Technology and BIB systems are reduced by 10,000 people over 3,000.Technology has helped coupled health services to new emerging technologies in their region and markets. Accounting of the BIB systems is also an important part of the globalization and impact of the markets. The BIB systems and BIB systems offer a free approximately 2,000 tickets per year. The broad term for international health services represents more than 1,700 tickets per year. International systems continue to be using air files and systems, while these remain programs are well placed. The broad term for international health services is often more than 1,050 tickets per year. The broad term for international health services is often more than 620 tickets per year during the year. Guests who have been asked tickets to order for a broad ter...<truncated>
+gptq:ar_seq[4] The history of the printing press began with a sketch. There were several anthologies at the point of the printing,but their legal tone was devastating when it comes to its printing label. Although the market didn’t last long for a day clause, it was only undering a printer without notice or needed to proceed. The printing press contained a panel that showed the printing was separated from the movements of the printing press before it was revealed and the printing press was separated from the movement of the printer. In this case the printing press had that printing press were not separated from the movements of the printing press. With this printing press, the printing press is divided into two places: one with an architectural wound for which the printing press had to fight/introduce the printer. The printing press is separated from the movements of the printing press in a variety of colors and paints to fit into the varying shape. The anthrax printing press was relatively versatile on this boundary, with more variables in printing than the varying shape. The press was divided into two places; one particular printer was large and blue. The printing press was introduced by a song from the press, and the other particular printer was treated by hand. In school, there was only a slight lexicole or type of printing. Clean work was made with a proper card soft smaller material and lining closed out! See the printing press at 1500 grams.This post will be done on May 27th, 2007. It will be understood that this publication is unclear ifwe still need to be remember, but there are several responses from the publication, which were proceeds from this period. That part would not be the same as demanded since the publication, but nonetheless I am no longer able to explain why such questions are normal and since we are not relaxed, so it should be inside with a handsome, rewarding, and endearing twist. This page is dedicated to the publications and the principles of publication in this post. As a large number of publication...<truncated>
+gptq:ar_seq[5] Public libraries provide more than just books. People are facing a higher library device than a technical subject, and when you take the contractual library, you guys have to conduct a download library to see if a server is there. Info/DOM-TOM Notifications Required for Web Services This requires 2015's work on this Console System. I love the work on anything other than digital audio. It has surpassed customers, small hardware forums and public libraries. However, it is recommended that you measure the ability of this Console System to jump into Highlands in your next step. Kids are facing lots of big sponsors. If you have multiplelots of touch advanced games, a multi-dimensional camera with non-Server Live video has been created. The logistics required by the Liveware Server is and the personal user will not require any fees from another company. Then after you start getting your business done on this Console System, it's time to check your company. Read more about it here. Allow the company to start relying on basic resources for a while.Transporting 1010 Amsterdam (Transporting) is a registered transportation UNITC Director of Public Studiesat the University of Georgia. About his workshop will be covering two key books and an example, Michael J. Evan Melancholy, a member of the American Institute of Technology, and the Institute, as well as the Public Schools of Foreign Republic, which created hisstudies as science, politics and collective agreements for the particularly common-cultural processes illustrating the history of its generational media (an example name is Latin). Over the years, technological advances have ethically impacted individuals and their networks to accomplish their requirements. This recent work concept was released from the National Institute of Technology that across the College, House 5 June 2017, was explored by the world’s first gathering of technologies related to traditional and energetic learning as well as a new way. The art is a lively teaching workshop culture that offers exp...<truncated>
+gptq:ar_seq[6] In many schools, group projects help students make mistakes and reach them. They also support students to learn about productivity; creating ability for the interests of school students. Our professionals will focus on the threat based on the importance of people’s wellbeing and their career. While every School Coaches offer a productive basics, they will let our students know what to do with the lack of understanding their careers. This basically creates a basic relationship in other schools that provides different variables in order to improve performance. We are proud of our scholarship at Stanford University, academically basedon the management and stakeholder chosen. As students have passed our education program, they will: - Provide students with learning and experience The School Coaches are our focus topics and creativctive institutions. 2018: Rayne Gunner (Reporting Text) - Delivering a research and exploration format of our scholarships and an appointed text of the basic texts materials "Being a text" is something that it's in your teaching curriculum. It doesn't work if you're trying to impact people who are different. They can help you quickly change your life and achieve better careers, especially as they are drawn by their abilities. Have students have different techniques and are either a versatile playfulness program or both? Students should be experts in their curriculum that have actually helps students simultaneously improve their abilities in teaching careers. Students need to do so at least one time per week to research the teaching program, whether they are specifically delegated, or what their discipline may be to address. 2018: Tom Hasslewood (Middle School) - Delivering students with level of experience sometimes vary within their classrooms and their lives. 2018: Brian Hess (Salin) - Daughter of four girls who pick two books online from Celebrity Harry Potter - Day, age and 3 - Day, age and 4 - Day, age and 3 - Day, age and 4 - Day, age and 4 - Day - Day, age and 6 - Day, age and 7 - Da...<truncated>
+gptq:ar_seq[7] Recycling aluminum saves energy because it comes with more investment and stimulating saves that make the savings market more efficient and more effortless. More information about the American Relations and the sell-out of the Canadian Swedish American Corps, and visit www.Canadianists.net.St Federal Defense Policy - Savage & Conduct The defense offers an incredible piece offaith at the House of Lords in the House of Lords in our House of Lords in our House of Lords in our House of Lords in our Hearts.Additional information about the Lords and their Hearts, including faith issues, disciplinary and unique practices, tax reimbursement, prisons and other related business issues, tax reimbursement, faith training and support for the House of Lords in your House.IMPORTANT “Benefits” anyone from House of Lords in your House of Lords in your House of Lords in your House of Lords in our House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in yourHouse of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House ofLords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords in your House of Lords. IMPORTANT “Benefits” Savage & Conduct The Dives of Lords and the Mind Prophet Government of Lords in your House of Lord, Governments and Societies in your House of Lords in your House of Lords. We reserve the right to apply the Romans for the Safeguarded Lords forming the Roman Embarrassment (Romans 1972). We reserve the right to apply the Romans for faith in the House of Lords in your House of Lords in your House of Lords. We reserve the right to apply the Romans for faith in your House of Lords in yourHouse of Lords in your House of Lords in your House of Lords in your House of Lords in your House ...<truncated>
+gptq:ar_seq[8] The following guide explains how to start a compost bin. Blue Jacket didn’t need to be covered by some kind of project: The question is, they couldn’t make a blue jacket didn’t happen, and they did not have a project to do this. This is where it’s been done, and what I did not mention was the directions. Blue Jacket didn’t have a project to be covered by other kinds of kindsof projects, like the Halloween cabinet, that these kinds of projects were working on as part of a project. It’s an important partof a project that makes it possible to draw up some kind of project from such projects, or for instance, before installing a project. Your project will be hardly done in this way, yet a project will have to go away. You can start by following the project: The question is, should I try to get this project done? You can just ask for it, but not if it works. There are those projects, and theymaybe you shouldn’t have them here, so that should putting those in some kind of project will not work. We would prefer to use more than one kind of project, but I don’t like it. There is also my own project, and I know that it will not be as directive as the Assembly to be installed here, yet we will have the same kind of project I’ve noticed. If I could try to do this, then I’ll handle it. Blue Jacket didn’t work this way because they weren’t working with numbers that they cut out the projects, so them were worthwhile, so I found them while in the project. After drawing up this project and then arriving at the project, I determine if the project being drawn in the project will create a path for open source project or gives a straightforward opinion that the project should completely open source projects and then stay such that they should not do anything without wrongdoing for them. Blue Jacket didn’thave the project to getting these project done for the kind of project. The project is also allowed to work, but the project will be filled as this may be impossible to get into conformity with the process. So while the project m...<truncated>
+gptq:ar_seq[9] Here are three ways to reduce food waste at home. Four ways to reduce food waste weretefosterous waste is the way for the needed windows. If you’re interested in cooking, you can head into a bar as it tastes great. A table that has a great extra battery for 30 minutes isn’t the only one to reduce food waste. That’s all about foreign trade markets. When you make the most of your food, you can construct assumptions from expensive banks for you. So if you want to make the most of the food, then the need for foreign trade is much more visible than the single thing. Buying the food is also a cooking tool and it will serve you well. If you want to make food from the food, then it will help you to reduce food waste.14 Technologies Therapy in Projects Increases the risk of engineering, education, and dietary emergency. During the introduction project, we study the efficacy of extensive and patient-related discoveries, with the hygienes and structures that both fit into both the cost and market transformation in both the costand market transformation in the cost and market transformation. Research studies Market talking about both the cost and market transformation between the cost and market transformation in the cost and market transformation from the cost & market transformationof cost and market transformation. Market talks make it a huge difference between the cost and market transformation in the cost and market transformation, and the following data will be conducted on preaching, instructional and click here. For more information, go to www.link. Transformation is also requested if you have any queries to answer questions or mention info. The Inquirer: Invited by the National Omni-Projects Content News offers a stream of information on the pre-linked publication of this information and more on selecting the illegitimate websites. This event requires entry.With more than 5000 supporting ASTAT supporters, ASTAT has launched the new ASTAT market for 2013. The award winning popularity creator Steven Rendon McGee is ...<truncated>
+gptq:collecting hessians from calibration data (source=ar_prompt_bank, batch=16)...
+gptq:collected hessians for 69 layers
+gptq:debug layers=66 jittered=0 fallback=0 max_total_damp_mult=1.0
+gptq:debug no layer required extra jitter or fallback
+selective_prune: 13324253 ±1 candidates, unpruned=14.87MB target=15.24MB
+selective_prune: already fits, no pruning needed
+Serialized model int6+lzma: 15445900 bytes
+Total submission size int6+lzma: 15591565 bytes
+final_int6_roundtrip val_loss:2.3237 val_bpb:1.3763 eval_time:60429ms
+final_int6_roundtrip_exact val_loss:2.32374773 val_bpb:1.37625429
+final_int6_sliding_window val_loss:2.2849 val_bpb:1.3532 stride:512 eval_time:173088ms
+final_int6_sliding_window_exact val_loss:2.28490456 val_bpb:1.35324774
