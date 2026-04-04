@@ -153,6 +153,9 @@ overhead:
   `2048` characters shown per sequence
 - current defaults are intentionally more aggressive on Hopper-class GPUs:
   `GPTQ_AR_BATCH_SIZE=64` and `GPTQ_HESSIAN_BATCH_SIZE=64`
+- selective prune now accepts a candidate early when it is already under the
+  target and within a small undershoot window; this is controlled by
+  `SELECTIVE_PRUNE_ACCEPT_UNDERSHOOT_BYTES` and defaults to `65536`
 
 This area is still under active optimization.
 

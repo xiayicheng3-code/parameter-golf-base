@@ -40,6 +40,12 @@ def main() -> None:
         default=max(1, min(16, os.cpu_count() or 1)),
         help="Number of worker threads for parallel probe evaluation",
     )
+    parser.add_argument(
+        "--accept-undershoot-bytes",
+        type=int,
+        default=65_536,
+        help="Accept a candidate early if it is within this many bytes below the target size",
+    )
     args = parser.parse_args()
     rerun_selective_prune_saved_artifact(
         input_path=args.input,
@@ -47,6 +53,7 @@ def main() -> None:
         code_path=args.code,
         target_mb=args.target_mb,
         workers=max(args.workers, 1),
+        accept_undershoot_bytes=max(args.accept_undershoot_bytes, 0),
         log_fn=print,
     )
 

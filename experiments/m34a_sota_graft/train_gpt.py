@@ -131,6 +131,10 @@ class Hyperparameters:
     gptq_prompt_demo_new_tokens = int(os.environ.get("GPTQ_PROMPT_DEMO_NEW_TOKENS", 128))
     gptq_prompt_demo_temperature = float(os.environ.get("GPTQ_PROMPT_DEMO_TEMPERATURE", 0.8))
     gptq_prompt_demo_max_chars = int(os.environ.get("GPTQ_PROMPT_DEMO_MAX_CHARS", 512))
+    selective_prune_accept_undershoot_bytes = int(
+        os.environ.get("SELECTIVE_PRUNE_ACCEPT_UNDERSHOOT_BYTES", 65_536)
+    )
+    log_to_file = bool(int(os.environ.get("LOG_TO_FILE", "1")))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -530,10 +534,43 @@ class TokenStream:
         self.file_idx = 0
         self.tokens = load_data_shard(self.files[0])
         self.pos = 0
+        self._prefetch_pool: cf.ThreadPoolExecutor | None = None
+        self._prefetch_future: cf.Future | None = None
+        self._prefetch_idx: int | None = None
+        if len(self.files) > 1:
+            self._prefetch_pool = cf.ThreadPoolExecutor(max_workers=1)
+            self._launch_prefetch()
+
+    def _next_file_idx(self) -> int:
+        return (self.file_idx + 1) % len(self.files)
+
+    def _launch_prefetch(self) -> None:
+        if self._prefetch_pool is None:
+            return
+        next_idx = self._next_file_idx()
+        # Avoid resubmitting the same shard while an in-flight prefetch is active.
+        if self._prefetch_future is not None and not self._prefetch_future.done() and self._prefetch_idx == next_idx:
+            return
+        self._prefetch_idx = next_idx
+        self._prefetch_future = self._prefetch_pool.submit(load_data_shard, self.files[next_idx])
+
     def _advance_file(self) -> None:
-        self.file_idx = (self.file_idx + 1) % len(self.files)
-        self.tokens = load_data_shard(self.files[self.file_idx])
+        next_idx = self._next_file_idx()
+        if self._prefetch_future is not None and self._prefetch_idx == next_idx:
+            self.tokens = self._prefetch_future.result()
+        else:
+            self.tokens = load_data_shard(self.files[next_idx])
+        self.file_idx = next_idx
         self.pos = 0
+        self._launch_prefetch()
+
+    def close(self) -> None:
+        if self._prefetch_pool is not None:
+            self._prefetch_pool.shutdown(wait=True, cancel_futures=False)
+            self._prefetch_pool = None
+        self._prefetch_future = None
+        self._prefetch_idx = None
+
     def take(self, n: int) -> Tensor:
         chunks: list[Tensor] = []
         remaining = n
@@ -562,6 +599,9 @@ class DistributedTokenLoader:
         x = local[:-1].reshape(-1, seq_len)
         y = local[1:].reshape(-1, seq_len)
         return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+    def close(self) -> None:
+        self.stream.close()
 
 # --- Transformer modules ---
 
@@ -2321,9 +2361,11 @@ def selective_prune_quant_result(
     target_mb: float,
     log_fn,
     workers: int | None = None,
+    accept_undershoot_bytes: int = 65_536,
 ) -> tuple[dict[str, Tensor], bytes]:
     grouped, num_candidates = build_selective_prune_groups(quant_result, quant_meta)
     target_bytes = int(target_mb * 1024 * 1024)
+    accept_undershoot_bytes = max(0, int(accept_undershoot_bytes))
     max_workers = max(1, os.cpu_count() or 1)
     default_workers = min(16, max_workers)
     worker_count = max(1, min(workers if workers is not None else default_workers, max_workers))
@@ -2333,6 +2375,12 @@ def selective_prune_quant_result(
         f"selective_prune: {num_candidates} ±1 candidates, "
         f"unpruned={unpruned_total_bytes/(1024*1024):.2f}MB target={target_mb}MB"
     )
+    if accept_undershoot_bytes > 0:
+        log_fn(
+            "selective_prune: "
+            f"accept_undershoot_bytes={accept_undershoot_bytes} "
+            f"({accept_undershoot_bytes/(1024*1024):.4f}MB)"
+        )
 
     if not grouped:
         log_fn("selective_prune: no ±1 candidates, no pruning needed")
@@ -2346,6 +2394,9 @@ def selective_prune_quant_result(
         state = build_pruned_quant_result(quant_result, grouped, prune_n)
         total_bytes, _ = serialized_quant_total_bytes(state, quant_meta, code_bytes)
         return prune_n, total_bytes
+
+    def is_close_enough(total_bytes: int) -> bool:
+        return total_bytes <= target_bytes and (target_bytes - total_bytes) <= accept_undershoot_bytes
 
     log_fn("selective_prune: probing full ±1 prune feasibility...")
     if worker_count > 1:
@@ -2361,9 +2412,54 @@ def selective_prune_quant_result(
     else:
         lo, hi = 0, num_candidates
         round_idx = 0
+        accepted_prune_n: int | None = None
         while hi - lo > 1:
             round_idx += 1
             width = hi - lo
+            # Exact compressed size is mildly non-monotonic because of LZMA, so
+            # once the feasible interval is small enough we stop doing coarse
+            # bracket probes and exhaustively scan the remaining candidates.
+            # This guarantees termination near the boundary instead of dithering
+            # for many rounds where every probe prints the same rounded MB.
+            local_scan_threshold = max(64, 4 * worker_count)
+            if width <= local_scan_threshold:
+                probes = list(range(lo + 1, hi + 1))
+                log_fn(
+                    f"selective_prune: local_scan lo={lo} hi={hi} "
+                    f"workers={worker_count} probes={len(probes)}"
+                )
+                if worker_count > 1 and len(probes) > 1:
+                    with cf.ThreadPoolExecutor(max_workers=min(worker_count, len(probes))) as ex:
+                        results = list(ex.map(eval_candidate, probes))
+                else:
+                    results = [eval_candidate(p) for p in probes]
+                results.sort(key=lambda x: x[0])
+                for prune_probe, total_bytes in results:
+                    log_fn(
+                        f"selective_prune: probe prune_n={prune_probe} "
+                        f"total_bytes={total_bytes} total_mb={total_bytes/(1024*1024):.4f}"
+                    )
+                close_enough = [
+                    (prune_probe, total_bytes)
+                    for prune_probe, total_bytes in results
+                    if is_close_enough(total_bytes)
+                ]
+                if close_enough:
+                    accepted_prune_n, accepted_total_bytes = min(close_enough, key=lambda x: x[0])
+                    log_fn(
+                        "selective_prune: early_accept "
+                        f"prune_n={accepted_prune_n} total_bytes={accepted_total_bytes} "
+                        f"undershoot_bytes={target_bytes - accepted_total_bytes}"
+                    )
+                    break
+                fitting = [prune_probe for prune_probe, total_bytes in results if total_bytes <= target_bytes]
+                if not fitting:
+                    raise RuntimeError(
+                        "selective_prune local scan found no feasible candidate "
+                        f"despite hi={hi} previously being feasible"
+                    )
+                hi = min(fitting)
+                break
             num_probes = min(worker_count, max(1, width - 1))
             probes = sorted(
                 {
@@ -2390,14 +2486,27 @@ def selective_prune_quant_result(
             for prune_probe, total_bytes in results:
                 log_fn(
                     f"selective_prune: probe prune_n={prune_probe} "
-                    f"total_mb={total_bytes/(1024*1024):.2f}"
+                    f"total_bytes={total_bytes} total_mb={total_bytes/(1024*1024):.4f}"
                 )
+            close_enough = [
+                (prune_probe, total_bytes)
+                for prune_probe, total_bytes in results
+                if is_close_enough(total_bytes)
+            ]
+            if close_enough:
+                accepted_prune_n, accepted_total_bytes = min(close_enough, key=lambda x: x[0])
+                log_fn(
+                    "selective_prune: early_accept "
+                    f"prune_n={accepted_prune_n} total_bytes={accepted_total_bytes} "
+                    f"undershoot_bytes={target_bytes - accepted_total_bytes}"
+                )
+                break
             fitting = [prune_probe for prune_probe, total_bytes in results if total_bytes <= target_bytes]
             if fitting:
                 hi = min(fitting)
             else:
                 lo = max(prune_probe for prune_probe, _ in results)
-        prune_n = hi
+        prune_n = accepted_prune_n if accepted_prune_n is not None else hi
         log_fn(
             f"selective_prune: pruning {prune_n}/{num_candidates} ±1 values "
             f"({100*prune_n/max(num_candidates,1):.1f}%) to fit {target_mb}MB"
@@ -2414,6 +2523,7 @@ def rerun_selective_prune_saved_artifact(
     code_path: Path,
     target_mb: float,
     workers: int | None = None,
+    accept_undershoot_bytes: int = 65_536,
     log_fn=print,
 ) -> None:
     payload = torch.load(io.BytesIO(lzma.decompress(input_path.read_bytes())), map_location="cpu")
@@ -2428,6 +2538,7 @@ def rerun_selective_prune_saved_artifact(
         target_mb,
         log_fn,
         workers=workers,
+        accept_undershoot_bytes=accept_undershoot_bytes,
     )
     output_path.write_bytes(pruned_blob)
     total_bytes = len(pruned_blob) + code_bytes
@@ -2509,7 +2620,7 @@ def main() -> None:
     enable_mem_efficient_sdp(False)
     enable_math_sdp(False)
     logfile = None
-    if master_process:
+    if master_process and args.log_to_file:
         os.makedirs("logs", exist_ok=True)
         logfile = f"logs/{args.run_id}.txt"
         print(logfile)
@@ -2551,6 +2662,7 @@ def main() -> None:
     )
     log0(f"val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path={args.tokenizer_path}")
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
+    log0(f"train_loader:next_shard_prefetch:{int(actual_train_files > 1)}")
     log0(f"val_loader:shards pattern={args.val_files} tokens:{val_tokens.numel() - 1}")
     CastedLinear._qat_enabled = args.qat_enabled
     base_model = GPT(
@@ -2719,15 +2831,24 @@ def main() -> None:
         f"gptq_cache_max_seqs:{args.gptq_cache_max_seqs}"
     )
     log0(
+        f"gptq_train_cache_enabled:{int(args.gptq_calib_source == 'train_cache')}"
+    )
+    log0(
         f"gptq_ar_temperature:{args.gptq_ar_temperature} "
         f"gptq_ar_repeat_penalty:{args.gptq_ar_repeat_penalty} "
         f"gptq_ar_repeat_last_n:{args.gptq_ar_repeat_last_n}"
     )
+    log0(
+        "selective_prune_accept_undershoot_bytes:"
+        f"{args.selective_prune_accept_undershoot_bytes}"
+    )
+    log0(f"log_to_file:{int(args.log_to_file)}")
     log0(f"seed:{args.seed}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+    train_calib_cache_enabled = args.gptq_calib_source == "train_cache"
     train_calib_cache = (
         deque(maxlen=max(args.gptq_cache_num_batches, 1))
-        if master_process and args.gptq_cache_num_batches > 0
+        if master_process and train_calib_cache_enabled and args.gptq_cache_num_batches > 0
         else None
     )
     def zero_grad_all() -> None:
@@ -2769,6 +2890,7 @@ def main() -> None:
         for opt, state in zip(optimizers, initial_optimizer_states, strict=True):
             opt.load_state_dict(state)
         zero_grad_all()
+        train_loader.close()
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     swa_state: dict[str, Tensor] | None = None
     swa_count = 0
@@ -3154,6 +3276,7 @@ def main() -> None:
             code_bytes_est,
             target_mb,
             log0,
+            accept_undershoot_bytes=args.selective_prune_accept_undershoot_bytes,
         )
         with open("final_model.int6.ptz", "wb") as f:
             f.write(quant_blob)
