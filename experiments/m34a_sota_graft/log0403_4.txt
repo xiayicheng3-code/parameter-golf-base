@@ -180,3 +180,63 @@ final_int6_roundtrip val_loss:2.3237 val_bpb:1.3763 eval_time:60429ms
 final_int6_roundtrip_exact val_loss:2.32374773 val_bpb:1.37625429
 final_int6_sliding_window val_loss:2.2849 val_bpb:1.3532 stride:512 eval_time:173088ms
 final_int6_sliding_window_exact val_loss:2.28490456 val_bpb:1.35324774
+root@8d9eb1468432:/workspace/parameter-golf-base/experiments/m34a_sota_graft# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@8d9eb1468432:/workspace/parameter-golf-base/experiments/m34a_sota_graft# python3 prune_saved_int6.py --input final_model.int6.ptz --output final_model.pruned.int6.ptz --target-mb 10.5 --workers 4
+selective_prune: 13324253 ±1 candidates, unpruned=14.87MB target=10.5MB
+selective_prune: probing full ±1 prune feasibility...
+selective_prune: full ±1 prune=10.15MB
+selective_prune: search_round=1 lo=0 hi=13324253 probes=[3331063, 6662126, 9993189]
+selective_prune: probe prune_n=3331063 total_mb=13.81
+selective_prune: probe prune_n=6662126 total_mb=12.72
+selective_prune: probe prune_n=9993189 total_mb=11.49
+selective_prune: search_round=2 lo=9993189 hi=13324253 probes=[10825955, 11658721, 12491487]
+selective_prune: probe prune_n=10825955 total_mb=11.17
+selective_prune: probe prune_n=11658721 total_mb=10.83
+selective_prune: probe prune_n=12491487 total_mb=10.50
+selective_prune: search_round=3 lo=9993189 hi=12491487 probes=[10617763, 11242338, 11866912]
+selective_prune: probe prune_n=10617763 total_mb=11.25
+selective_prune: probe prune_n=11242338 total_mb=11.00
+selective_prune: probe prune_n=11866912 total_mb=10.74
+selective_prune: search_round=4 lo=11866912 hi=12491487 probes=[12023055, 12179199, 12335343]
+selective_prune: probe prune_n=12023055 total_mb=10.69
+selective_prune: probe prune_n=12179199 total_mb=10.62
+selective_prune: probe prune_n=12335343 total_mb=10.56
+selective_prune: search_round=5 lo=12335343 hi=12491487 probes=[12374379, 12413415, 12452451]
+selective_prune: probe prune_n=12374379 total_mb=10.54
+selective_prune: probe prune_n=12413415 total_mb=10.53
+selective_prune: probe prune_n=12452451 total_mb=10.51
+selective_prune: search_round=6 lo=12452451 hi=12491487 probes=[12462210, 12471969, 12481728]
+selective_prune: probe prune_n=12462210 total_mb=10.51
+selective_prune: probe prune_n=12471969 total_mb=10.50
+selective_prune: probe prune_n=12481728 total_mb=10.50
+selective_prune: search_round=7 lo=12481728 hi=12491487 probes=[12484167, 12486607, 12489047]
+selective_prune: probe prune_n=12484167 total_mb=10.50
+selective_prune: probe prune_n=12486607 total_mb=10.50
+selective_prune: probe prune_n=12489047 total_mb=10.49
+selective_prune: search_round=8 lo=12481728 hi=12484167 probes=[12482337, 12482947, 12483557]
+selective_prune: probe prune_n=12482337 total_mb=10.50
+selective_prune: probe prune_n=12482947 total_mb=10.50
+selective_prune: probe prune_n=12483557 total_mb=10.50
+selective_prune: search_round=9 lo=12481728 hi=12482947 probes=[12482032, 12482337, 12482642]
+selective_prune: probe prune_n=12482032 total_mb=10.50
+selective_prune: probe prune_n=12482337 total_mb=10.50
+selective_prune: probe prune_n=12482642 total_mb=10.50
+selective_prune: search_round=10 lo=12482642 hi=12482947 probes=[12482718, 12482794, 12482870]
+selective_prune: probe prune_n=12482718 total_mb=10.50
+selective_prune: probe prune_n=12482794 total_mb=10.50
+selective_prune: probe prune_n=12482870 total_mb=10.50
+selective_prune: search_round=11 lo=12482642 hi=12482718 probes=[12482661, 12482680, 12482699]
+selective_prune: probe prune_n=12482661 total_mb=10.50
+selective_prune: probe prune_n=12482680 total_mb=10.50
+selective_prune: probe prune_n=12482699 total_mb=10.50
+selective_prune: search_round=12 lo=12482642 hi=12482661 probes=[12482646, 12482651, 12482656]
+selective_prune: probe prune_n=12482646 total_mb=10.50
+selective_prune: probe prune_n=12482651 total_mb=10.50
+selective_prune: probe prune_n=12482656 total_mb=10.50
+selective_prune: search_round=13 lo=12482642 hi=12482646 probes=[12482643, 12482644, 12482645]
+selective_prune: probe prune_n=12482643 total_mb=10.50
+selective_prune: probe prune_n=12482644 total_mb=10.50
+selective_prune: probe prune_n=12482645 total_mb=10.50
+selective_prune: pruning 12482643/13324253 ±1 values (93.7%) to fit 10.5MB
+selective_prune_saved: model_bytes=10858968 total_bytes=11009707 elapsed_s=516.7
+selective_prune_saved: wrote final_model.pruned.int6.ptz

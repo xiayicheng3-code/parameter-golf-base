@@ -2324,7 +2324,9 @@ def selective_prune_quant_result(
 ) -> tuple[dict[str, Tensor], bytes]:
     grouped, num_candidates = build_selective_prune_groups(quant_result, quant_meta)
     target_bytes = int(target_mb * 1024 * 1024)
-    worker_count = max(1, min(workers or 4, os.cpu_count() or 1, 4))
+    max_workers = max(1, os.cpu_count() or 1)
+    default_workers = min(16, max_workers)
+    worker_count = max(1, min(workers if workers is not None else default_workers, max_workers))
 
     unpruned_total_bytes, unpruned_blob = serialized_quant_total_bytes(quant_result, quant_meta, code_bytes)
     log_fn(
@@ -2362,15 +2364,23 @@ def selective_prune_quant_result(
         while hi - lo > 1:
             round_idx += 1
             width = hi - lo
+            num_probes = min(worker_count, max(1, width - 1))
             probes = sorted(
                 {
-                    lo + max(1, width // 4),
-                    lo + max(1, width // 2),
-                    lo + max(1, (3 * width) // 4),
+                    lo + max(
+                        1,
+                        min(width - 1, round((i * width) / (num_probes + 1))),
+                    )
+                    for i in range(1, num_probes + 1)
                 }
             )
             probes = [p for p in probes if lo < p < hi]
-            log_fn(f"selective_prune: search_round={round_idx} lo={lo} hi={hi} probes={probes}")
+            if not probes:
+                probes = [lo + max(1, width // 2)]
+            log_fn(
+                f"selective_prune: search_round={round_idx} lo={lo} hi={hi} "
+                f"workers={worker_count} probes={probes}"
+            )
             if worker_count > 1 and len(probes) > 1:
                 with cf.ThreadPoolExecutor(max_workers=min(worker_count, len(probes))) as ex:
                     results = list(ex.map(eval_candidate, probes))

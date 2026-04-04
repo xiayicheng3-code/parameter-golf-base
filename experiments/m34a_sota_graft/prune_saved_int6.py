@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--workers",
         type=int,
-        default=max(1, min(4, os.cpu_count() or 1)),
+        default=max(1, min(16, os.cpu_count() or 1)),
         help="Number of worker threads for parallel probe evaluation",
     )
     args = parser.parse_args()
