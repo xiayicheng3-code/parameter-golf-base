@@ -827,7 +827,7 @@ class NgramHashEmbedding(nn.Module):
     def reset_near_zero_parameters(self) -> None:
         nn.init.normal_(self.embed.weight, mean=0.0, std=self.ngram_init_std)
         if self.proj is not None:
-            nn.init.normal_(self.proj.weight, mean=0.0, std=self.ngram_init_std)
+            nn.init.orthogonal_(self.proj.weight, gain=1.0)
         nn.init.normal_(self.q_proj.weight, mean=0.0, std=self.ngram_init_std)
 
     def ngram_hash(self, tokens_i32: Tensor, order: int, vocab_size: int, num_hashes: int, group_offset: int) -> Tensor:
