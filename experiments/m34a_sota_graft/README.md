@@ -147,6 +147,8 @@ overhead:
 - after all final evaluations, the script also prints a small prompt-based
   generation demo for quick qualitative sanity checks; this does not affect
   GPTQ calibration
+- if GPTQ calibration already used `ar` or `ar_prompt_bank`, the final prompt
+  demo is skipped to avoid redundant generation
 - default behavior is to print the first `10` generated sequences, with up to
   `2048` characters shown per sequence
 - current defaults are intentionally more aggressive on Hopper-class GPUs:

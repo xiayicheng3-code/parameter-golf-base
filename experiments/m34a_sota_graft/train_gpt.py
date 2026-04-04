@@ -118,7 +118,7 @@ class Hyperparameters:
     gptq_cache_max_seqs = int(os.environ.get("GPTQ_CACHE_MAX_SEQS", 64))
     gptq_ar_num_seqs = int(os.environ.get("GPTQ_AR_NUM_SEQS", 64))
     gptq_ar_batch_size = int(os.environ.get("GPTQ_AR_BATCH_SIZE", 16))
-    gptq_hessian_batch_size = int(os.environ.get("GPTQ_HESSIAN_BATCH_SIZE", 16))
+    gptq_hessian_batch_size = int(os.environ.get("GPTQ_HESSIAN_BATCH_SIZE", 64))
     gptq_ar_temperature = float(os.environ.get("GPTQ_AR_TEMPERATURE", 0.8))
     gptq_ar_repeat_penalty = float(os.environ.get("GPTQ_AR_REPEAT_PENALTY", 1.05))
     gptq_ar_repeat_last_n = int(os.environ.get("GPTQ_AR_REPEAT_LAST_N", 128))
@@ -1667,6 +1667,7 @@ def generate_prompt_demo_texts(
     sp: spm.SentencePieceProcessor,
     device: torch.device,
     prompts: list[str],
+    seq_len: int,
     max_new_tokens: int,
     temperature: float,
     seed: int,
@@ -1687,7 +1688,7 @@ def generate_prompt_demo_texts(
             prev_pre_smear = None
             recent_tokens = tokens
             total_len = min(
-                model.max_seq_len,
+                seq_len,
                 max(len(prompt_ids), 1) + max(max_new_tokens, 0),
             )
             for pos in range(1, total_len):
@@ -3063,27 +3064,34 @@ def main() -> None:
         )
         log0(f"final_int6_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
     if master_process and args.gptq_prompt_demo_count > 0:
-        prompt_texts = generate_prompt_demo_texts(
-            eval_model,
-            sp,
-            device,
-            PROMPT_DEMO_TEXTS[:args.gptq_prompt_demo_count],
-            max_new_tokens=args.gptq_prompt_demo_new_tokens,
-            temperature=args.gptq_prompt_demo_temperature,
-            seed=args.seed + 12345,
-            repeat_penalty=args.gptq_ar_repeat_penalty,
-            repeat_last_n=args.gptq_ar_repeat_last_n,
-        )
-        log0(
-            "demo:prompt_generation "
-            f"count={len(prompt_texts)} new_tokens={args.gptq_prompt_demo_new_tokens} "
-            f"temp={args.gptq_prompt_demo_temperature}"
-        )
-        for idx, text in enumerate(prompt_texts):
-            text = text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-            if args.gptq_prompt_demo_max_chars > 0 and len(text) > args.gptq_prompt_demo_max_chars:
-                text = text[:args.gptq_prompt_demo_max_chars] + "...<truncated>"
-            log0(f"demo:prompt[{idx}] {text}")
+        if calib_source_used in {"ar", "ar_prompt_bank"}:
+            log0(
+                "demo:prompt_generation skipped because GPTQ calibration already used "
+                f"{calib_source_used}"
+            )
+        else:
+            prompt_texts = generate_prompt_demo_texts(
+                eval_model,
+                sp,
+                device,
+                PROMPT_DEMO_TEXTS[:args.gptq_prompt_demo_count],
+                seq_len=sw_seq_len,
+                max_new_tokens=args.gptq_prompt_demo_new_tokens,
+                temperature=args.gptq_prompt_demo_temperature,
+                seed=args.seed + 12345,
+                repeat_penalty=args.gptq_ar_repeat_penalty,
+                repeat_last_n=args.gptq_ar_repeat_last_n,
+            )
+            log0(
+                "demo:prompt_generation "
+                f"count={len(prompt_texts)} new_tokens={args.gptq_prompt_demo_new_tokens} "
+                f"temp={args.gptq_prompt_demo_temperature}"
+            )
+            for idx, text in enumerate(prompt_texts):
+                text = text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+                if args.gptq_prompt_demo_max_chars > 0 and len(text) > args.gptq_prompt_demo_max_chars:
+                    text = text[:args.gptq_prompt_demo_max_chars] + "...<truncated>"
+                log0(f"demo:prompt[{idx}] {text}")
     if distributed:
         dist.barrier()
     if distributed:
