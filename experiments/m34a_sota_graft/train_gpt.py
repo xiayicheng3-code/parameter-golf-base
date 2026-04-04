@@ -117,7 +117,7 @@ class Hyperparameters:
     gptq_cache_num_batches = int(os.environ.get("GPTQ_CACHE_NUM_BATCHES", 4))
     gptq_cache_max_seqs = int(os.environ.get("GPTQ_CACHE_MAX_SEQS", 64))
     gptq_ar_num_seqs = int(os.environ.get("GPTQ_AR_NUM_SEQS", 64))
-    gptq_ar_batch_size = int(os.environ.get("GPTQ_AR_BATCH_SIZE", 16))
+    gptq_ar_batch_size = int(os.environ.get("GPTQ_AR_BATCH_SIZE", 64))
     gptq_hessian_batch_size = int(os.environ.get("GPTQ_HESSIAN_BATCH_SIZE", 64))
     gptq_ar_temperature = float(os.environ.get("GPTQ_AR_TEMPERATURE", 0.8))
     gptq_ar_repeat_penalty = float(os.environ.get("GPTQ_AR_REPEAT_PENALTY", 1.05))

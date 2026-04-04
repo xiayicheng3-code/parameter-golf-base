@@ -152,7 +152,7 @@ overhead:
 - default behavior is to print the first `10` generated sequences, with up to
   `2048` characters shown per sequence
 - current defaults are intentionally more aggressive on Hopper-class GPUs:
-  `GPTQ_AR_BATCH_SIZE=16` and `GPTQ_HESSIAN_BATCH_SIZE=16`
+  `GPTQ_AR_BATCH_SIZE=64` and `GPTQ_HESSIAN_BATCH_SIZE=64`
 
 This area is still under active optimization.
 
