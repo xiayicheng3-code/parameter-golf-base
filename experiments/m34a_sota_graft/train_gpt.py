@@ -1,4 +1,5 @@
 from __future__ import annotations
+import atexit
 import bisect
 import copy
 import concurrent.futures as cf
@@ -7,9 +8,11 @@ import io
 import lzma
 import math
 import os
+import queue
 import random
 import subprocess
 import sys
+import threading
 import time
 import uuid
 import zlib
@@ -135,6 +138,7 @@ class Hyperparameters:
         os.environ.get("SELECTIVE_PRUNE_ACCEPT_UNDERSHOOT_BYTES", 65_536)
     )
     log_to_file = bool(int(os.environ.get("LOG_TO_FILE", "1")))
+    async_logging = bool(int(os.environ.get("ASYNC_LOGGING", "1")))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -2572,6 +2576,50 @@ def dequantize_mixed_int6(result: dict[str, Tensor], meta: dict[str, object],
             out[name] = (q.float() * float(s.item())).to(orig_dtype)
     return out
 
+
+class AsyncLogger:
+    def __init__(self, logfile: str | None):
+        self._logfile = logfile
+        self._queue: queue.SimpleQueue[tuple[bool, str] | None] = queue.SimpleQueue()
+        self._closed = False
+        self._worker_thread = threading.Thread(
+            target=self._worker,
+            name="m34a-async-logger",
+            daemon=False,
+        )
+        self._worker_thread.start()
+
+    def _worker(self) -> None:
+        logfile_handle = None
+        if self._logfile is not None:
+            logfile_handle = open(self._logfile, "a", encoding="utf-8", buffering=1)
+        try:
+            while True:
+                item = self._queue.get()
+                if item is None:
+                    break
+                console, msg = item
+                if console:
+                    print(msg, flush=True)
+                if logfile_handle is not None:
+                    print(msg, file=logfile_handle)
+        finally:
+            if logfile_handle is not None:
+                logfile_handle.flush()
+                logfile_handle.close()
+
+    def log(self, msg: str, console: bool = True) -> None:
+        if self._closed:
+            return
+        self._queue.put((console, msg))
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._queue.put(None)
+        self._worker_thread.join()
+
 # --- Training ---
 
 def main() -> None:
@@ -2624,8 +2672,15 @@ def main() -> None:
         os.makedirs("logs", exist_ok=True)
         logfile = f"logs/{args.run_id}.txt"
         print(logfile)
+    async_logger: AsyncLogger | None = None
+    if master_process and args.async_logging:
+        async_logger = AsyncLogger(logfile)
+        atexit.register(async_logger.close)
     def log0(msg: str, console: bool = True) -> None:
         if not master_process:
+            return
+        if async_logger is not None:
+            async_logger.log(msg, console=console)
             return
         if console:
             print(msg)
@@ -2843,6 +2898,7 @@ def main() -> None:
         f"{args.selective_prune_accept_undershoot_bytes}"
     )
     log0(f"log_to_file:{int(args.log_to_file)}")
+    log0(f"async_logging:{int(args.async_logging)}")
     log0(f"seed:{args.seed}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     train_calib_cache_enabled = args.gptq_calib_source == "train_cache"
@@ -3381,5 +3437,7 @@ def main() -> None:
         dist.barrier()
     if distributed:
         dist.destroy_process_group()
+    if async_logger is not None:
+        async_logger.close()
 if __name__ == "__main__":
     main()
