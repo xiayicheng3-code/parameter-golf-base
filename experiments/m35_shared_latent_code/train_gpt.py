@@ -44,6 +44,7 @@ class Hyperparameters:
     iterations = int(os.environ.get("ITERATIONS", 20000))
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
+    grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", 1))
     train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
@@ -863,13 +864,9 @@ class GPT(nn.Module):
         self.ffn_code_dim = ffn_code_dim
         # Shared latent-code parameters. Codes are layer-local; decoders are shared.
         self.attn_code_bank = nn.Parameter(torch.empty(num_layers * num_heads, head_dim, attn_code_dim))
-        self.attn_q_decoder = nn.Parameter(torch.empty(num_heads, attn_code_dim, model_dim))
-        self.attn_k_decoder = nn.Parameter(torch.empty(num_heads, attn_code_dim, model_dim))
-        self.attn_v_decoder = nn.Parameter(torch.empty(num_heads, attn_code_dim, model_dim))
-        self.attn_o_decoder = nn.Parameter(torch.empty(num_heads, attn_code_dim, model_dim))
+        self.attn_qkvo_decoder = nn.Parameter(torch.empty(num_heads, attn_code_dim, 4 * model_dim))
         self.mlp_code_bank = nn.Parameter(torch.empty(num_layers, mlp_dim, ffn_code_dim))
-        self.mlp_up_decoder = nn.Parameter(torch.empty(ffn_code_dim, model_dim))
-        self.mlp_down_decoder = nn.Parameter(torch.empty(ffn_code_dim, model_dim))
+        self.mlp_updown_decoder = nn.Parameter(torch.empty(ffn_code_dim, 2 * model_dim))
         self.blocks = nn.ModuleList(
             [
                 Block(
@@ -924,14 +921,16 @@ class GPT(nn.Module):
         for i in range(self.attn_code_bank.shape[0]):
             nn.init.orthogonal_(self.attn_code_bank.data[i], gain=1.0)
         for i in range(self.num_heads):
-            nn.init.orthogonal_(self.attn_q_decoder.data[i], gain=1.0)
-            nn.init.orthogonal_(self.attn_k_decoder.data[i], gain=1.0)
-            nn.init.orthogonal_(self.attn_v_decoder.data[i], gain=1.0)
-            nn.init.zeros_(self.attn_o_decoder.data[i])
+            dec = self.attn_qkvo_decoder.data[i].view(self.attn_code_dim, 4, self.model_dim)
+            nn.init.orthogonal_(dec[:, 0, :], gain=1.0)
+            nn.init.orthogonal_(dec[:, 1, :], gain=1.0)
+            nn.init.orthogonal_(dec[:, 2, :], gain=1.0)
+            nn.init.zeros_(dec[:, 3, :])
         for i in range(n):
             nn.init.orthogonal_(self.mlp_code_bank.data[i], gain=1.0)
-        nn.init.orthogonal_(self.mlp_up_decoder.data, gain=1.0)
-        nn.init.zeros_(self.mlp_down_decoder.data)
+        fused_mlp = self.mlp_updown_decoder.data.view(self.ffn_code_dim, 2, self.model_dim)
+        nn.init.orthogonal_(fused_mlp[:, 0, :], gain=1.0)
+        nn.init.zeros_(fused_mlp[:, 1, :])
         # Init remaining nn.Linear modules (bigram proj, mtp heads, lm_head)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
@@ -939,24 +938,24 @@ class GPT(nn.Module):
                     nn.init.zeros_(module.weight)
                 elif module.weight.ndim == 2 and module.weight.shape[0] >= 64 and module.weight.shape[1] >= 64:
                     nn.init.orthogonal_(module.weight, gain=1.0)
-    def _materialize_attn_weights(self, layer_idx: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        start = layer_idx * self.num_heads
-        stop = start + self.num_heads
-        attn_code = self.attn_code_bank[start:stop]
-        q_blocks = torch.matmul(attn_code, self.attn_q_decoder)
-        k_blocks = torch.matmul(attn_code, self.attn_k_decoder)
-        v_blocks = torch.matmul(attn_code, self.attn_v_decoder)
-        out_blocks_t = torch.matmul(attn_code, self.attn_o_decoder)
-        q_w = q_blocks.reshape(self.model_dim, self.model_dim)
-        k_w = k_blocks.reshape(self.model_dim, self.model_dim)
-        v_w = v_blocks.reshape(self.model_dim, self.model_dim)
-        out_w = out_blocks_t.transpose(1, 2).permute(1, 0, 2).reshape(self.model_dim, self.model_dim)
-        return q_w, k_w, v_w, out_w
-    def _materialize_mlp_weights(self, layer_idx: int) -> tuple[Tensor, Tensor]:
-        mlp_code = self.mlp_code_bank[layer_idx]
-        up_w = torch.matmul(mlp_code, self.mlp_up_decoder)
-        down_w = torch.matmul(mlp_code, self.mlp_down_decoder).transpose(0, 1).contiguous()
-        return up_w, down_w
+    def _materialize_attn_banks(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        # Decode all Q/K/V/O banks in one batched matmul so the block loop only does indexing.
+        attn_code = self.attn_code_bank.view(self.num_layers, self.num_heads, self.head_dim, self.attn_code_dim)
+        qkvo_blocks = torch.matmul(attn_code, self.attn_qkvo_decoder)
+        q_blocks, k_blocks, v_blocks, out_blocks_t = torch.split(qkvo_blocks, self.model_dim, dim=-1)
+        q_bank = q_blocks.reshape(self.num_layers, self.model_dim, self.model_dim)
+        k_bank = k_blocks.reshape(self.num_layers, self.model_dim, self.model_dim)
+        v_bank = v_blocks.reshape(self.num_layers, self.model_dim, self.model_dim)
+        out_bank = out_blocks_t.transpose(-2, -1).permute(0, 2, 1, 3).reshape(
+            self.num_layers, self.model_dim, self.model_dim
+        )
+        return q_bank, k_bank, v_bank, out_bank
+    def _materialize_mlp_banks(self) -> tuple[Tensor, Tensor]:
+        # Decode all up/down banks in one matmul, mirroring the old dense parameter-bank flow.
+        updown_blocks = torch.matmul(self.mlp_code_bank, self.mlp_updown_decoder)
+        up_bank, down_blocks = torch.split(updown_blocks, self.model_dim, dim=-1)
+        down_bank = down_blocks.transpose(1, 2).contiguous()
+        return up_bank, down_bank
     def _get_ve(self, layer_idx: int, input_ids: Tensor, ve_cache: dict | None = None) -> Tensor | None:
         """Get value embedding for a specific layer using shared table + per-layer scale."""
         if self.ve_shared is None or layer_idx not in self.ve_layer_indices:
@@ -977,12 +976,12 @@ class GPT(nn.Module):
         v0 = None
         skips: list[Tensor] = []
         ve_cache: dict = {}
+        q_bank, k_bank, v_bank, out_bank = self._materialize_attn_banks()
+        up_bank, down_bank = self._materialize_mlp_banks()
         for i in range(self.num_encoder_layers):
             ve = self._get_ve(i, input_ids, ve_cache)
-            q_w, k_w, v_w, out_w = self._materialize_attn_weights(i)
-            up_w, down_w = self._materialize_mlp_weights(i)
             x, raw_v = self.blocks[i](x, x0,
-                q_w, k_w, v_w, out_w, up_w, down_w,
+                q_bank[i], k_bank[i], v_bank[i], out_bank[i], up_bank[i], down_bank[i],
                 v_embed=ve, v0=v0)
             if v0 is None and raw_v is not None:
                 v0 = raw_v
@@ -992,10 +991,8 @@ class GPT(nn.Module):
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
             ve = self._get_ve(bi, input_ids, ve_cache)
-            q_w, k_w, v_w, out_w = self._materialize_attn_weights(bi)
-            up_w, down_w = self._materialize_mlp_weights(bi)
             x, _ = self.blocks[bi](x, x0,
-                q_w, k_w, v_w, out_w, up_w, down_w,
+                q_bank[bi], k_bank[bi], v_bank[bi], out_bank[bi], up_bank[bi], down_bank[bi],
                 v_embed=ve, v0=v0)
         x = self.final_norm(x)
         x_flat = x.reshape(-1, x.size(-1))
@@ -1037,12 +1034,12 @@ class GPT(nn.Module):
         v0 = None
         skips: list[Tensor] = []
         ve_cache: dict = {}
+        q_bank, k_bank, v_bank, out_bank = self._materialize_attn_banks()
+        up_bank, down_bank = self._materialize_mlp_banks()
         for i in range(self.num_encoder_layers):
             ve = self._get_ve(i, input_ids, ve_cache)
-            q_w, k_w, v_w, out_w = self._materialize_attn_weights(i)
-            up_w, down_w = self._materialize_mlp_weights(i)
             x, raw_v = self.blocks[i](x, x0,
-                q_w, k_w, v_w, out_w, up_w, down_w,
+                q_bank[i], k_bank[i], v_bank[i], out_bank[i], up_bank[i], down_bank[i],
                 v_embed=ve, v0=v0)
             if v0 is None and raw_v is not None:
                 v0 = raw_v
@@ -1052,10 +1049,8 @@ class GPT(nn.Module):
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
             ve = self._get_ve(bi, input_ids, ve_cache)
-            q_w, k_w, v_w, out_w = self._materialize_attn_weights(bi)
-            up_w, down_w = self._materialize_mlp_weights(bi)
             x, _ = self.blocks[bi](x, x0,
-                q_w, k_w, v_w, out_w, up_w, down_w,
+                q_bank[bi], k_bank[bi], v_bank[bi], out_bank[bi], up_bank[bi], down_bank[bi],
                 v_embed=ve, v0=v0)
         x = self.final_norm(x)
         if self.tie_embeddings:
@@ -1226,9 +1221,9 @@ def main() -> None:
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if world_size <= 0:
         raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
-    if 8 % world_size != 0:
-        raise ValueError(f"WORLD_SIZE={world_size} must divide 8 so grad_accum_steps stays integral")
-    grad_accum_steps = 8 // world_size
+    grad_accum_steps = args.grad_accum_steps
+    if grad_accum_steps <= 0:
+        raise ValueError(f"GRAD_ACCUM_STEPS must be positive, got {grad_accum_steps}")
     grad_scale = 1.0 / grad_accum_steps
     if not torch.cuda.is_available():
         raise RuntimeError("M35 train_gpt.py now requires CUDA.")
@@ -1328,13 +1323,9 @@ def main() -> None:
     ).to(device=device, dtype=model_dtype)
     # Shared latent-code parameters stay FP32, then cast on use in F.linear.
     base_model.attn_code_bank.data = base_model.attn_code_bank.data.float()
-    base_model.attn_q_decoder.data = base_model.attn_q_decoder.data.float()
-    base_model.attn_k_decoder.data = base_model.attn_k_decoder.data.float()
-    base_model.attn_v_decoder.data = base_model.attn_v_decoder.data.float()
-    base_model.attn_o_decoder.data = base_model.attn_o_decoder.data.float()
+    base_model.attn_qkvo_decoder.data = base_model.attn_qkvo_decoder.data.float()
     base_model.mlp_code_bank.data = base_model.mlp_code_bank.data.float()
-    base_model.mlp_up_decoder.data = base_model.mlp_up_decoder.data.float()
-    base_model.mlp_down_decoder.data = base_model.mlp_down_decoder.data.float()
+    base_model.mlp_updown_decoder.data = base_model.mlp_updown_decoder.data.float()
     for module in base_model.modules():
         if isinstance(module, CastedLinear):
             module.float()
@@ -1351,13 +1342,9 @@ def main() -> None:
     # - bigram proj, mtp heads, VE proj -> Adam (small matrix params not worth banking)
     matrix_params = [
         base_model.attn_code_bank,
-        base_model.attn_q_decoder,
-        base_model.attn_k_decoder,
-        base_model.attn_v_decoder,
-        base_model.attn_o_decoder,
+        base_model.attn_qkvo_decoder,
         base_model.mlp_code_bank,
-        base_model.mlp_up_decoder,
-        base_model.mlp_down_decoder,
+        base_model.mlp_updown_decoder,
     ]
     block_named_params = list(base_model.blocks.named_parameters())
     scalar_params = [
@@ -1728,13 +1715,9 @@ def main() -> None:
         gated_attention=args.gated_attention, value_residual=args.value_residual,
     ).to(device=device, dtype=model_dtype)
     eval_model.attn_code_bank.data = eval_model.attn_code_bank.data.float()
-    eval_model.attn_q_decoder.data = eval_model.attn_q_decoder.data.float()
-    eval_model.attn_k_decoder.data = eval_model.attn_k_decoder.data.float()
-    eval_model.attn_v_decoder.data = eval_model.attn_v_decoder.data.float()
-    eval_model.attn_o_decoder.data = eval_model.attn_o_decoder.data.float()
+    eval_model.attn_qkvo_decoder.data = eval_model.attn_qkvo_decoder.data.float()
     eval_model.mlp_code_bank.data = eval_model.mlp_code_bank.data.float()
-    eval_model.mlp_up_decoder.data = eval_model.mlp_up_decoder.data.float()
-    eval_model.mlp_down_decoder.data = eval_model.mlp_down_decoder.data.float()
+    eval_model.mlp_updown_decoder.data = eval_model.mlp_updown_decoder.data.float()
     for m in eval_model.modules():
         if isinstance(m, CastedLinear):
             m.float()
