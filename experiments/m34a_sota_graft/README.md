@@ -10,6 +10,52 @@ This folder is not a record reproduction. It is a working research branch for:
 - compatibility with the XSA + Parallel Muon + GPTQ stack
 - early 1x H100 proxy validation before 8x H100 runs
 
+## Status Update (2026-04-04)
+
+As of the latest 8x H100 runs, this branch should be treated primarily as a
+useful **negative-result / lessons-learned line**, not as the current best
+winning direction.
+
+The most important conclusions from the latest legal runs are:
+
+- after fixing several hidden systems taxes, throughput recovered to a
+  near-baseline regime
+- even then, the gated multi-order hash line still did not beat the March 25
+  BigramHash reference after compression
+- the strongest legal run in this line came from **removing same-order hash
+  competition** (`NGRAM_NUM_HASHES=1,1,1`), which is already a sign that the
+  original multi-hash gating story may have been wrong
+- explicit tail-loss emphasis on the last tokens did not help the sliding eval
+  metric in a meaningful way
+
+Representative 8x H100 legal result:
+
+- log: [log0404_2.txt](./log0404_2.txt)
+- train wallclock: ~600s
+- step time: ~87.4 ms
+- pre-quant val BPB: `1.1347`
+- int6 roundtrip val BPB: `1.14309182`
+- int6 sliding-window val BPB: `1.11959957`
+- total submission size: `15,937,956` bytes
+
+For comparison, the March 25 BigramHash seed-42 reference achieved:
+
+- pre-quant val BPB: `1.1340`
+- int6 roundtrip val BPB: `1.13808963`
+- int6 sliding-window val BPB: `1.11437394`
+- total submission size: `15,984,850` bytes
+
+So the remaining gap now looks much less like a pure systems issue and much
+more like an architectural / post-training mismatch. My current interpretation
+is that stable hash collisions may be useful as identity-like features, and
+that aggressive candidate-level semantic gating may be filtering out exactly
+those stable but "dirty" features that a simpler additive hash prior can still
+use.
+
+This negative-result line has been written up separately as a non-record
+submission in a clean PR workspace, but this experiment branch remains the
+canonical place for the full iterative code and logs.
+
 ## What Is Preserved
 
 The following parts are intentionally kept from the source stack:
@@ -170,6 +216,11 @@ When enabled, the main LM loss gives extra weight to the last
 `TRAIN_TAIL_LOSS_TOKENS` positions of each training sequence. This is intended
 for experiments that deliberately bias training toward the region emphasized by
 sliding-window evaluation with larger `EVAL_STRIDE`.
+
+Current conclusion from this branch: this idea did **not** help the final
+stride-64 sliding metric in the tested legal 8x H100 runs. It remains exposed
+for further study, but should currently be considered an unsuccessful
+experiment rather than a recommended default.
 
 It also supports a one-time experimental training batch switch:
 

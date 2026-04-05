@@ -1,0 +1,249 @@
+ _____                             _
+|  __ \                           | |
+| |__) |   _ _ __  _ __   ___   __| |
+|  _  / | | | '_ \| '_ \ / _ \ / _` |
+| | \ \ |_| | | | | |_) | (_) | (_| |
+|_|  \_\__,_|_| |_| .__/ \___/ \__,_|
+                  | |
+                  |_|
+For detailed documentation and guides, please visit:
+https://docs.runpod.io/ and https://blog.runpod.io/
+
+
+root@188ab206cb21:/workspace/parameter-golf# cd /workspace
+root@188ab206cb21:/workspace# git clone https://github.com/xiayicheng3-code/parameter-golf-base.git || true
+Cloning into 'parameter-golf-base'...
+remote: Enumerating objects: 1079, done.
+remote: Counting objects: 100% (37/37), done.
+remote: Compressing objects: 100% (23/23), done.
+remote: Total 1079 (delta 26), reused 22 (delta 14), pack-reused 1042 (from 2)
+Receiving objects: 100% (1079/1079), 2.62 MiB | 11.87 MiB/s, done.
+Resolving deltas: 100% (568/568), done.
+root@188ab206cb21:/workspace# cd /workspace/parameter-golf-base
+root@188ab206cb21:/workspace/parameter-golf-base# git fetch origin
+root@188ab206cb21:/workspace/parameter-golf-base# git pull --ff-only
+Already up to date.
+root@188ab206cb21:/workspace/parameter-golf-base#
+root@188ab206cb21:/workspace/parameter-golf-base# python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+manifest.json: 1.93kB [00:00, 3.02MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|███████████████████████████████████████████| 124M/124M [00:01<00:00, 75.9MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 164MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 195MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 165MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 164MB/s]
+datasets/datasets/fineweb10B_sp1024/fine(…): 100%|████████████████████████████████████████████| 200M/200M [00:01<00:00, 163MB/s]
+datasets/tokenizers/fineweb_1024_bpe.mod(…): 100%|████████████████████████████████████████████| 254k/254k [00:00<00:00, 598kB/s]
+fineweb_1024_bpe.vocab: 9.86kB [00:00, 11.2MB/s]
+root@188ab206cb21:/workspace/parameter-golf-base# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@188ab206cb21:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_1x4090_minimal_smoke_nhash1 \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> NUM_LAYERS=3 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=1.0 \
+> TRAIN_BATCH_TOKENS=786432 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=524288 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_DIM=256 \
+> NGRAM_ORDERS=2, 3, 4 \
+> NGRAM_VOCAB_SIZES=20480, 20480, 40960 \
+> NGRAM_NUM_HASHES=1, 1, 1 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=0.04 \
+> TRAIN_TAIL_LOSS_TOKENS=1024 \
+> TRAIN_TAIL_LOSS_WEIGHT=2.0 \
+> EVAL_STRIDE=1024 \
+> LATE_QAT_THRESHOLD=0.15 \
+> GPTQ_CALIB_SOURCE=ar \
+> GPTQ_AR_BATCH_SIZE=64 \
+> GPTQ_HESSIAN_BATCH_SIZE=64 \
+> GPTQ_AR_PRINT_SEQUENCES=10 \
+> GPTQ_PROMPT_DEMO_COUNT=0 \
+> GPTQ_AR_REPEAT_PENALTY=1.2 \
+> LOG_TO_FILE=0 \
+> TARGET_MB=15.24 \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+bash: 3,: command not found
+root@188ab206cb21:/workspace/parameter-golf-base/experiments/m34a_sota_graft# cd /workspace/parameter-golf-base/experiments/m34a_sota_graft
+root@188ab206cb21:/workspace/parameter-golf-base/experiments/m34a_sota_graft# RUN_ID=m34a_sota_graft_1x4090_minimal_smoke_nhash1 \
+> DATA_PATH=../../data/datasets/fineweb10B_sp1024 \
+> TOKENIZER_PATH=../../data/tokenizers/fineweb_1024_bpe.model \
+> NUM_LAYERS=3 \
+> MODEL_DIM=512 \
+> NUM_HEADS=8 \
+> NUM_KV_HEADS=4 \
+> MLP_MULT=1.0 \
+> TRAIN_BATCH_TOKENS=786432 \
+> GRAD_ACCUM_STEPS=1 \
+> VAL_BATCH_SIZE=524288 \
+> VAL_LOSS_EVERY=0 \
+> TRAIN_LOG_EVERY=25 \
+> MAX_WALLCLOCK_SECONDS=600 \
+> NGRAM_DIM=256 \
+> NGRAM_ORDERS=2,3,4 \
+> NGRAM_VOCAB_SIZES=20480,20480,40960 \
+> NGRAM_NUM_HASHES=1,1,1 \
+> NGRAM_INIT_STD=0.005 \
+> NGRAM_WD=0.04 \
+> TRAIN_TAIL_LOSS_TOKENS=1024 \
+> TRAIN_TAIL_LOSS_WEIGHT=2.0 \
+> EVAL_STRIDE=1024 \
+> LATE_QAT_THRESHOLD=0.15 \
+> GPTQ_CALIB_SOURCE=ar \
+> GPTQ_AR_BATCH_SIZE=64 \
+> GPTQ_HESSIAN_BATCH_SIZE=64 \
+> GPTQ_AR_PRINT_SEQUENCES=10 \
+> GPTQ_PROMPT_DEMO_COUNT=0 \
+> GPTQ_AR_REPEAT_PENALTY=1.2 \
+> LOG_TO_FILE=0 \
+> TARGET_MB=15.24 \
+> torchrun --standalone --nproc_per_node=1 train_gpt.py
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=../../data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:10
+train_loader:next_shard_prefetch:1
+val_loader:shards pattern=../../data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:25861151
+mtp_num_heads:0 mtp_loss_weight:0.2 mtp_params:0
+XSA:last_11 active_layers:[0, 1, 2]
+world_size:1 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025 ngram_wd:0.04
+train_batch_tokens:786432 train_seq_len:2048 micro_batch_tokens:786432 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+eval_stride:1024 train_tail_loss_tokens:1024 train_tail_loss_weight:2.0
+gptq_calib_source:ar gptq_cache_num_batches:4 gptq_cache_max_seqs:64
+gptq_train_cache_enabled:0
+gptq_ar_temperature:0.8 gptq_ar_repeat_penalty:1.2 gptq_ar_repeat_last_n:128
+selective_prune_accept_undershoot_bytes:65536
+log_to_file:0
+async_logging:1
+seed:1337
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:1/20000 train_loss:6.9312 train_time:821ms step_avg:821.21ms
+step:2/20000 train_loss:9.0368 train_time:855ms step_avg:427.49ms
+step:3/20000 train_loss:8.8181 train_time:1334ms step_avg:444.72ms
+step:4/20000 train_loss:8.2103 train_time:1825ms step_avg:456.33ms
+step:5/20000 train_loss:7.5128 train_time:2317ms step_avg:463.44ms
+step:6/20000 train_loss:6.9733 train_time:2811ms step_avg:468.52ms
+step:7/20000 train_loss:6.5294 train_time:3302ms step_avg:471.73ms
+step:8/20000 train_loss:6.2205 train_time:3794ms step_avg:474.31ms
+step:9/20000 train_loss:6.0178 train_time:4285ms step_avg:476.15ms
+step:10/20000 train_loss:5.9130 train_time:4777ms step_avg:477.71ms
+step:25/20000 train_loss:5.1771 train_time:12161ms step_avg:486.45ms
+step:50/20000 train_loss:3.9072 train_time:24504ms step_avg:490.07ms
+step:75/20000 train_loss:3.4864 train_time:36843ms step_avg:491.24ms
+step:100/20000 train_loss:3.3221 train_time:49199ms step_avg:491.99ms
+step:125/20000 train_loss:3.1825 train_time:61546ms step_avg:492.37ms
+step:150/20000 train_loss:3.0544 train_time:74119ms step_avg:494.13ms
+step:175/20000 train_loss:2.9368 train_time:86488ms step_avg:494.22ms
+step:200/20000 train_loss:2.7962 train_time:98876ms step_avg:494.38ms
+step:225/20000 train_loss:2.7437 train_time:111254ms step_avg:494.46ms
+step:250/20000 train_loss:2.7718 train_time:123630ms step_avg:494.52ms
+step:275/20000 train_loss:2.6964 train_time:136001ms step_avg:494.55ms
+step:300/20000 train_loss:2.6250 train_time:148356ms step_avg:494.52ms
+step:325/20000 train_loss:2.5910 train_time:160757ms step_avg:494.64ms
+step:350/20000 train_loss:2.6553 train_time:173147ms step_avg:494.71ms
+step:375/20000 train_loss:2.5450 train_time:185541ms step_avg:494.78ms
+step:400/20000 train_loss:2.5794 train_time:197933ms step_avg:494.83ms
+step:425/20000 train_loss:2.5682 train_time:210307ms step_avg:494.84ms
+step:450/20000 train_loss:2.4034 train_time:222722ms step_avg:494.94ms
+step:475/20000 train_loss:2.4773 train_time:235085ms step_avg:494.92ms
+step:500/20000 train_loss:2.4559 train_time:247477ms step_avg:494.95ms
+step:525/20000 train_loss:2.4794 train_time:259870ms step_avg:494.99ms
+swa:start step:550
+step:550/20000 train_loss:2.5149 train_time:272272ms step_avg:495.04ms
+step:575/20000 train_loss:2.4461 train_time:284702ms step_avg:495.13ms
+step:600/20000 train_loss:2.4140 train_time:297063ms step_avg:495.10ms
+step:625/20000 train_loss:2.4763 train_time:309495ms step_avg:495.19ms
+step:650/20000 train_loss:2.3917 train_time:321865ms step_avg:495.18ms
+step:675/20000 train_loss:2.4229 train_time:334276ms step_avg:495.22ms
+late_qat:enabled step:685 scale:0.1500
+step:700/20000 train_loss:2.4595 train_time:346637ms step_avg:495.20ms
+step:725/20000 train_loss:2.4550 train_time:359083ms step_avg:495.29ms
+step:750/20000 train_loss:2.4325 train_time:371461ms step_avg:495.28ms
+step:775/20000 train_loss:2.4022 train_time:383893ms step_avg:495.35ms
+step:800/20000 train_loss:2.4107 train_time:396290ms step_avg:495.36ms
+step:825/20000 train_loss:2.3639 train_time:408800ms step_avg:495.51ms
+step:850/20000 train_loss:2.3410 train_time:421192ms step_avg:495.52ms
+step:875/20000 train_loss:2.3759 train_time:433692ms step_avg:495.65ms
+step:900/20000 train_loss:2.2705 train_time:446306ms step_avg:495.90ms
+step:925/20000 train_loss:2.3625 train_time:459076ms step_avg:496.30ms
+step:950/20000 train_loss:2.4544 train_time:471465ms step_avg:496.28ms
+step:975/20000 train_loss:2.3534 train_time:483924ms step_avg:496.33ms
+step:1000/20000 train_loss:2.3979 train_time:496319ms step_avg:496.32ms
+step:1025/20000 train_loss:2.3191 train_time:508785ms step_avg:496.38ms
+step:1050/20000 train_loss:2.3270 train_time:521186ms step_avg:496.37ms
+step:1075/20000 train_loss:2.3492 train_time:533632ms step_avg:496.40ms
+step:1100/20000 train_loss:2.3495 train_time:546032ms step_avg:496.39ms
+step:1125/20000 train_loss:2.3607 train_time:558481ms step_avg:496.43ms
+step:1150/20000 train_loss:2.3144 train_time:570872ms step_avg:496.41ms
+step:1175/20000 train_loss:2.3313 train_time:583474ms step_avg:496.57ms
+step:1200/20000 train_loss:2.3617 train_time:595850ms step_avg:496.54ms
+step:1209/20000 val_loss:2.3409 val_bpb:1.3864 train_time:600827ms step_avg:496.96ms
+stopping_early: wallclock_cap train_time:600827ms step:1209/20000
+peak memory allocated: 44444 MiB reserved: 45846 MiB
+ema:applying EMA weights
+DIAGNOSTIC post_ema val_loss:2.3952 val_bpb:1.4186 eval_time:11006ms
+Serialized model: 60200280 bytes
+Code size: 158924 bytes
+gptq:building non-banked model for Hessian collection...
+gptq:generating autoregressive calibration data (64 seqs x 2048 tokens, temp=0.8, batch=64)...
+gptq:generated 64 sequences in 25.1s
+gptq:autoregressive_calibration_sequences count=64 showing=10
+gptq:ar_seq[0] one. This was on a campaign to my hubby and what they expected Face Crow One of the biggest problems people who are anxious about his personal information is needed for their relationship, or just plain nice statements that would be handling these groups of officers – also known as “the Teach” at 20% Three years ago in Australia: The war so effectively understandable social meniness was trying to reward them. This came out of a spot where it fell like children such language and drawings werenot exactly desperate but uncommon There are two families who have been assumed to know what they had been accomplish with their partner, or because that’s how much younger than that personally thought about the bad news. While starting at 20% Three yearsago before I gobbled up on Face Spark Crow One year in Manchester Club Halloween conversation surrounded by candles and scorchings – was expected of a great deal from events supporters as well, but if it would very little to resist anyone noticing what they enjoy for their grandmother’s Day then you will have them to take Erines Language Healthline or his official relationship.On an aggressively month of God Jonah shut down Kimfield 16; Anywhere about the mercies Hoff, where he has become rocket-based in adeceit past ceilings and survival mean that little time risked Billions more than just regaining data for hopes about given theopportunities to be absolute alike – even though fans are jumping over as much from Ragnara and Elore how something is been working with. In Christians’ antelopharyne Shortish yellow brown colors via Kimfield 16; Anywhere made a strain of pastoral merciesHoffman's debating organization at all turning once in Congress, Ville Sailest and Missouri T2AM only pledges by Libya, Allison& USPG-7-0839 Good new product lineage for humans. The couple have been observing their fallen consistently before they can saythat this is not an easy character as a healthline decided to advice about Hoffman's debate over the marketplace or level of interest brought f...<truncated>
+gptq:ar_seq[1] atistical source of petiter - Being About Years 2018 Drawings, Inc. (NYSEWO): Texas Rates & Sponsorship No one in the fall by Blackjack service is required for everyone to see if there's a corrected association number that has been approvalor operating profits any individual charges may be intended to echome offers during this time period of time from materialancionatunriver - Massage 283, Cymru on viewing potent scans (non-Extensive Alle Europe). The concept here was important. It also hadthe most different tactical antenna installations and a wide range of sequences, quite those combination for developmental allies with respect to both joints as well as oxforders at rocket surroundings which can help prevent disorder or storage in isolates from echome offices. 283 Left Massage's PAC-PUR footstep Sponsorship No one has been noticed by the on number that I have received during this time period and until my attributes, when quite those comfortable touches were approaching it, but without a handle there was already unless left as well as many other sources of petiter (Express from promisa). The ruins. 2016 Drawings forsome people aren't ever clogged into their movements yet again -- the large youchome on both today are before developmental allies getting out in an important place at rocket or even 98% they were cleaning up their partner they won by nearer company and safety proof notebook, usual touches can make a dream person find like that hard work: fewer than three decades old. The Blackjack has been reviewed for two men who had twice as long again or overall fails the same day without monthly it's approximately $20per year on record in total -- 35% of all consumers are getting up front by trade group and EuL19 charging services handful of women is able to specify support purchased property via Soniche. In both rules, clockwork provided a lot more than just what kind of scorn displays were misunderstood or each other for the directions. It's called "Oil" which means that when I have not begin myself without...<truncated>
+gptq:ar_seq[2] 0bale writes during online journals in the same way as Mr Payce LLC. In all other cases, munchies are more things for battle poverty and than enjoyed being a girl of Justice Brandon Gruberyen kids learning how to build up anger over 1 month’s actions reached out to full relationship with her life. “I don't know if I can do that anyone is somehow you have chosen one:they will not come off this doubly because we look in an opinion at the readers when it arrives.” LLC-ABS Professor Colich willtaking pictures from Ulrich’s visual developments online journals around Justice Hay, Fire Chat Writing and Explanation.There are very few transformational communities iPad usage – so bigger number of NGO projectors may be successful but leave for their structure to open while do the country international that have been modeled out-of-bubble Schedule Applications Officials & Classified Programmes (SHRA) Central Plaintifact Bonus, Haydock Deep and Travelers’ computing advice will take place on Mondays at 300 from no later than Thursday. Follow this free event if you like one development project or scheduler to get the country aroundyour neighbourhood! We are in Leicester – Victoria Sortium offer Directory confidential information regarding volunteers who have been prepared for their struggle against both the modeled out-of-centre changes and continual guidance, entitled ‘You can’t approve that much checks at this time. Find an incubation fee of $10 may be successfully placed on a country to compete with original purchases rather than following build upon which it is actually! USPAR Activities: International Men Travelers Process Envelopment Center Policy Office Work Removals Replacements & struggle against both parties and the visitors who are not log in, indictations, movement expenses, rewards, zombie franchise trio, wonderful advocate for group questions rather than following. There is no invaluable information about each of your claim to believe that there may incurred a number of potential volunteers or professionals if ...<truncated>
+gptq:ar_seq[3] m making a “black” story. Daniel Fish, who proposed the Ouberton Penny’s Ashford launch on Nov 2017 After arriving from Germany interrupting Neverfree World Series finals to details, we have found that www.carlickeeper.com/alph ‘Toan Your Home Industry Information Collection: The group will play a visual insight and restart their segment within an academic society student who may be most likely encourage other publishers for sport developments or partnerships at the Ballottenburg School of Law Enforceance Authority (CIA) First, it costs $500.5 billion to make this year’s Oxdick Chane Project Marketing Collection:386 This is one talked from a record-1792 video about 4 % increase in analysis by using your own legal office and account information on possible viable options at keeping a phone within the start of our Virtual Business regardless of whether you want or not yet have selected lower than performance benchmark(s), this might be more effective but above all that deployment will help. For some reason it would like to feel strongly self-imposed and free for good friend’s (a precision to promote your trial). These are NWC9853602'741 cornerers who can even become a rare voice of possibility, or dictatorship in the first case/commercial boundaries: our least improve overall continuous project, higher speed and account information that is maintaining great deals. Businesses provide external questions with key suitable options available for each year to make use of staff however wise they may findthemselves whether you should be aware of this regardless of your trial). Our result includes some travel time (not allow) or national friendly assume no indication whatsoever has been done every since our Virtual Camp will offer updates and information, the wholesome promising investments.Ehealth 2017 - High School is Graduate Educator Type: Student – Partner Model When paged in books with new shows, a student was given insight as he could find dreams of success, musical acoustics work accordance or regulation through al...<truncated>
+gptq:ar_seq[4] �� Monthly, RSM. Twisa is fun. There are several essential oils that can be used to prevent their insect treatment from the body of organic moisture loss of the peak level and disease-capacity working properties that could restore this space by a deep notice which will offer any pesticides to help you feel so strong as they cause heavy dosage resulting up into your hand at home, too may help people out small risk for how often do they have grown. Next year is old raw insulin (Thon) This website covers many areas in Australia Tuesday each day and consumed online throughout the table! Isn’t that precious now? Maybe it would be better than a place where we live with all our clients and provides you to far more cleaners but not still badly? What can you get from someone looking up? DIY blogger says there will also have time for me every year. Andrew is one of my personally here ... Consultant has shared many options;Adam & Eric Jimmy - All this items are often broken in the hands of his victim, Play (book) as Permit Ministry and Value Scripture environments takes topics at their allies” once again a statement from “Pete Fucking House.” The notion that people worked partly with school, but further deliberation is activity involved. What can you do for them when they need? Learn exactly how it means something endangered is that the industry’s crew solely are hopeful about what you want; in essence remembers think of a major roller and paradigm shift which now officially restored allies on its own homeimage. By this taking another party with high specific information, I am not looking up any new techniques to follow given yourscripture array by available graphics for beginning books When opening the show full explanation either size or non-text item certain “rea” could meet one of the inside family members in their life as they were revealed from a previous distant roller and online. We are particularly associated with this result; we have been amazed at what will happen when finding an outdoor projectmanager’s work ...<truncated>
+gptq:ar_seq[5] ores a lens. “Suite” Training, hint – Bailey is often first suddenly takes its name into the Glover (organised) model using Sprout Instructions for down to ratified trainers and crooner point-and 20/34 interception National Automobiles Collective Vegas Inthem sharipparadigan Loose Wood Fogs Rules Distance manufacturing direction with a breach of endurance.The love that combine hard online healthy conditions, how the flow is still under artificial intelligence as well as attributable to sexual representation and personnel making use of image interception along King Pattern (A) named ‘Decorate’ – NGCLaudaria Sodium Troopera was unlikely to have look at any cause I was a breath since before that I feel it would eventually demand for one more time. - Divide: Reverend Roman Emperor Angus could decline as much as the answers are requested by live metal or junk food depends on statistical and term along King Pattern (A) named ‘Decorate’ – NGCLaudaria Sodium Lakeer Mixed Although this cannot have a hard time breathing, it is not only necessary to do same things too. The most artificial intelligence has been positively of sexual dyslexia with the more images interception that combination must be lost for Roman Emperors and was very centrifuged by an increase from any shown ‘Decorate’ – NGCLaudaripparadigan-flavored Sodium Troopera graville, a hard disk scaly sample. The collective agreement between two others commanding officers including: "No one explains there to the police'll avail the governments fall into line at hand with master and tech activity; if they have not been accused of taking this article on their names in some parts or probably it is equally short for more than 20 years!"Adult Executive Director, Friday January 14 - Upcoming Access Poster Return Total-Time Breakthrough Operators: Similarly develop a full range scene an inclination during the first year. The National Institution (NI) and Government’s accountant received from trust students in the past eight months from Beacon, Staff Michigan Showtime Cup ...<truncated>
+gptq:ar_seq[6] ).Sun 2018 is a simple form to correct posters and materials, supplying the production/device of our online lautra. While Magneto's Westfield watch Lampkin Villain Planner take some time in Burgundy females who see his stories even remarkable at how he can do it! He did not receive any kind of hard work from small team or effort (which is tightened after a cosmopolitan relationship) other Australian company has been experimenting with the sources and then get to know which manufacturer you may have collected. This Kevan will be available online across several main contractions, including: - Margate Plus Time passportCountry Square w/2018: • Herbia loans are just received – while Burgundy took some time off after hector’s take a chance when taking left customers during the fourth highest wide range in this year (Magnetite) The North of Autonomous... This is my first scientist at Erasté. I am an expert and also "film" for Golden solar panel or bandwidth to calculate more than 10%! Sign up so that you can truly enjoy your Wedding Root by clicking on our website links without consultation, review & share to know about Michael Jacks (see all).Check out this month, OHBJA@RIMENGODWS Dr. Klisteni has begun his new range of resources and the information headers have been undisputable for sincere disaster in California when one was government directors show numerous times; more than that currently they can now look at Expected 2019: In deletions about Business Developments (FC) felony charge overseeing amembership contract, Petition explains that someone is endowed by guaranteed not all volunteers are email is available to have access to the entries. This is also possible for people who want hold these business relations and will keep them conversation with their two book Check out this monthly newsletter » - Elementary School Drink's WARS Register header Here you can go back here (without calling) Freefédorea (Channel, Kimberlin). Inches map of Business Developments are transitioned from land to the system. The process ...<truncated>
+gptq:ar_seq[7] church, for the first time. The roof is emptied and closed by more than a hundred yards on smelling capacity with multiple oxygen levels 12pm Minimum of 680 – two weeks after sign-updated notice measurement that were performance or scalableto possession component in this month’s budget. It was writer Franza Worcestershire at Savage Cost Day, which led the roof for decades before local changes made over hundred yards by replacements in a move consisting from another NBC foundation (NASD) tell us what it wants and how productive during snaps...but only if I have routinely gained property after 15 minute of work on this month’s budget to pull off tight schedule impowers. As one more time, many people are actually looking at their own coolest kids – they visit the Gibrarian who struggles over last year or before getting out all these hundred yards from a home as well because anyone is in The First American Collateral date by Robert Miller? During our things formation and discussion cannot be freely trick-or-based (NASD) tell us what we have, especially if you don’t even know about cheap packaging! Ready to leave the roof on your side of arrangements which were completely out developed or decided that this would not be increase property. Whether itis in a hundred yards in a movement given an accident only equality for anyone who doesn’t want violence with other people – from literature and use some good reason, they also didn’t expect them so much? You can read about these many posters hereTaking up biggest impressions on the science 'New New York Corpus Christi seminar: Brown-Month America Philip Simulated Highlights of cheap right eyebrow hookup step in Malaysia ISO/C40 Wire in NYABD, free radical viewing with other conditioned and motion during anewstatement made while kept paying preciously. Getting from hereife’ on your little birthed guard to creative exercise? Provide accessibility Though we the open doorwo something is unmistakable for some reason that belongs in rare steel hookup (in coppiest) Hughes you w...<truncated>
+gptq:ar_seq[8] ibe to spike face entries highlighted on earth that strength and durability, which is informative. Assessing a profit from the past almost monetization of Jordan's money-ridge clock, Dominica Munco (3) seven years ago, represents 1:18 law enforcement counties today thanks for your prayers!Tallow Ride Test Outdoors - Worst Free Service After sort throughout the HotelLoose II stolen these days and hearing about their work. Your equipment are made with pure rockhood in collection of fine colored wools from Nebraska There is nothing like California's alternate on Great New Mexican class that will keep you accessible to all, your average buyer bookcase then spilled out for its own designs - Tallow recordings containers: campground colors includesIllinois Standard Instructions Forum compilation and 18th-coupling post about Hotel Loose headlock Sparkle Dimethylene glycol. And it is no direction of the large Curry website or their first home salary required by my Napa shop, there are many other New York state level membranes that come with brand new york together from viewers who have been aware it not only can even be annoyed out in this way and think back at some time ...is actually seeking a colored wool artist/Yomextext & named on Bethylene Grosso. The campground post about Hotel Loose headlock Sparkle is appreciated by the TSA, its class of California forbidden sparkles - you've recognized that scenario now occurred in originate gives off to be strength and durability at home along with his consultant Kearlyon ...is actually seeking a lowest price similarity unto yah!Hey guys will have your reactions. He was great at our hospitals he’d knew expectations about getting well over the years, neither of us know how much we could do if it were practicalas spirited among people who came here from time to time while they had been discussed international standard rare problems when their children are not left flight via mother; other treatments and additional violence alone including wherever life is good fortune or intru...<truncated>
+gptq:ar_seq[9] ️!·mediums are 20fd nigglleared (1964.357), ‘New Bridge’ and split M-8 to fuel the AM Survey is achieving new assmbles that Hispanics would be more extensively useful for large tourist entertainers producing homes in order of world restoration projects... Uw metabolished while still writing based on poem: What assumption goals can be even better? We are creative. Once we have ‘New Bridgestone Reality’ (1975). Championship Ron Maymundan is the most important survey respected compliance and lead characteristics that include heaviness, explosiveness adherence to higher selection of america; easily assembly infusing raceproducts such as coziness or bodies like London and every other tourism project graphical foundation for laboratory work. Uw metaphor: Description with transparental ‘degree travel’ (308) is the most important lead characteristics that include heavy cumulative Soviet surveys, convoluted double-streamlinage Marketing at Central America—and related to stimulating or appearances in unemployment rates over those minds? While age group of two families have had about the company research and students became online. The following recommendations were also set up: - (108) ‘At Generation’ & HLISO Survey; Roth Discord Point discharged by Lowell Function with other previously known sections, including Translate Asian elements such as stable water to protect interactive workers from conditioners of silicone mass produce or reduces gas pipeline deposit.Patent Justice Malaysia In Stock Explore Its 1866 Country Of The Atheist’s Women and Government (AB) – “The Nation” - Summary: Independence & Rise Fourth Baptism Dates, the Village for Labor 203 in TIRDC are now rolling around by six weeks after drawing up into two groups of people with special owner images. Kineta “Would you like to turn this off? It is an excellent customer behaviors that have been written on their way throughout comparable property management and seasonal installments; it has one of them.” The scammer spokesman suggested the budget for New York...<truncated>
+gptq:collecting hessians from calibration data (source=ar, batch=64)...
+gptq:collected hessians for 21 layers
+gptq:debug layers=19 jittered=0 fallback=0 max_total_damp_mult=1.0
+gptq:debug no layer required extra jitter or fallback
+selective_prune: 1809229 ±1 candidates, unpruned=19.12MB target=15.24MB
+selective_prune: accept_undershoot_bytes=65536 (0.0625MB)
+selective_prune: probing full ±1 prune feasibility...
+selective_prune: full ±1 prune=18.49MB
+selective_prune: even full prune not enough, applying all
+Serialized model int6+lzma: 19229124 bytes
+Total submission size int6+lzma: 19388048 bytes
+final_int6_roundtrip val_loss:5.6123 val_bpb:3.3239 eval_time:21761ms
+final_int6_roundtrip_exact val_loss:5.61228663 val_bpb:3.32391227
+final_int6_roundtrip val_loss:5.6123 val_bpb:3.3239 eval_time:21761ms
+final_int6_roundtrip_exact val_loss:5.61228663 val_bpb:3.32391227
+final_int6_sliding_window val_loss:5.5637 val_bpb:3.2952 stride:1024 eval_time:51806ms
+final_int6_sliding_window_exact val_loss:5.56374368 val_bpb:3.29516064
