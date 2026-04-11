@@ -1,7 +1,13 @@
-Paste this at the start of a pod( Always use a pod in NA!):
+Cloud GPU terminal notes
 
+Yes: terminal-only is enough.
+No: you do not need Git to download logs or model files.
 
+Git is useful for syncing code to the pod, but artifact transfer is usually better done with `scp`, `rsync`, or `sftp` over SSH.
 
+Paste this on the pod after SSH login. Always use a pod in NA.
+
+```bash
 cd /workspace
 
 if [ ! -d /workspace/parameter-golf-base ]; then
@@ -12,3 +18,68 @@ cd /workspace/parameter-golf-base
 git pull --ff-only https://github.com/xiayicheng3-code/parameter-golf-base.git HEAD
 
 python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+
+RUN_ID=my_run_20260409
+ART_DIR=/workspace/artifacts/$RUN_ID
+mkdir -p "$ART_DIR"
+
+TRAIN_LOG_EVERY=25 \
+python3 train_gpt.py 2>&1 | tee "$ART_DIR/train.log"
+
+cp final_model.pt "$ART_DIR/"
+cp final_model.int8.ptz "$ART_DIR/"
+
+tar -czf "/workspace/${RUN_ID}_artifacts.tar.gz" -C "$ART_DIR" .
+
+echo "Saved artifacts:"
+ls -lh "$ART_DIR"
+ls -lh "/workspace/${RUN_ID}_artifacts.tar.gz"
+```
+
+For the baseline `train_gpt.py`, the important output files are:
+
+- `train.log`
+- `final_model.pt`
+- `final_model.int8.ptz`
+
+Download from your local machine terminal, not from inside the remote SSH shell.
+Use the same SSH host and port that the cloud provider gave you for SSH access.
+
+```bash
+mkdir -p ~/Downloads/parameter-golf
+
+scp -P <PORT> root@<HOST>:/workspace/my_run_20260409_artifacts.tar.gz \
+  ~/Downloads/parameter-golf/
+```
+
+Or download the folder contents directly:
+
+```bash
+mkdir -p ~/Downloads/parameter-golf/my_run_20260409
+
+scp -P <PORT> root@<HOST>:/workspace/artifacts/my_run_20260409/train.log \
+  ~/Downloads/parameter-golf/my_run_20260409/
+
+scp -P <PORT> root@<HOST>:/workspace/artifacts/my_run_20260409/final_model.pt \
+  ~/Downloads/parameter-golf/my_run_20260409/
+
+scp -P <PORT> root@<HOST>:/workspace/artifacts/my_run_20260409/final_model.int8.ptz \
+  ~/Downloads/parameter-golf/my_run_20260409/
+```
+
+`rsync` is nicer for larger files because it shows progress and is easier to resume:
+
+```bash
+mkdir -p ~/Downloads/parameter-golf/my_run_20260409
+
+rsync -avP -e "ssh -p <PORT>" \
+  root@<HOST>:/workspace/artifacts/my_run_20260409/ \
+  ~/Downloads/parameter-golf/my_run_20260409/
+```
+
+Important notes:
+
+- If you run an experiment from another folder, keep the same pattern: save stdout/stderr with `tee`, then copy the produced model files into one run folder.
+- If your experiment script writes different filenames, adjust the `cp` lines.
+- If you only have browser SSH and no real SSH host/port for your own local terminal, then terminal-only download to your laptop may not be possible from that browser session alone. In that case you would need either direct SSH access, cloud storage, or Git/Git LFS as a secondary transport.
+- Git is not the best place for large binary artifacts unless you intentionally want versioned storage and are using Git LFS.

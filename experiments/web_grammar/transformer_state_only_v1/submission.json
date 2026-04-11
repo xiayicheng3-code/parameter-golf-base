@@ -1,0 +1,10 @@
+{
+  "name": "transformer_state_only_v1",
+  "status": "smoke_verified_scaffold",
+  "track": "non_record_experiment",
+  "val_bpb": 4.028574,
+  "artifact_bytes": 248425,
+  "total_submission_bytes": 300622,
+  "run_id": "state_only_32state_stackfix",
+  "notes": "Tiny CPU scaffold smoke only. Portable 32-feature cross-token grammar-state input adapter. No count-table base distribution; no base_lp + residual hybrid."
+}

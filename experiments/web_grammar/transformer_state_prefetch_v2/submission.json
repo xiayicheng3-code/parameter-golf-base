@@ -1,0 +1,8 @@
+{
+  "name": "transformer_state_prefetch_v2",
+  "status": "smoke_verified_scaffold",
+  "track": "non_record_experiment",
+  "val_bpb": 4.039225,
+  "artifact_bytes": 257132,
+  "notes": "CPU memmap + document-worker grammar feature prefetch scaffold with closed-doc BOS handling, deterministic two-phase long-doc sampling, masked padded loss, chunked sliding-window local attention plus causal depthwise conv in early layers, and cloud-oriented pipeline optimizations: infinite train stream, worker-side grammar caching, uint16 token transfer, and CUDA host-prefetch overlap."
+}

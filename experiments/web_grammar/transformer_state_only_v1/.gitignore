@@ -1,0 +1,3 @@
+*.pt
+*.ptz
+__pycache__/
