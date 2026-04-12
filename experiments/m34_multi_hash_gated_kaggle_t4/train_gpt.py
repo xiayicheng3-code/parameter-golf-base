@@ -635,10 +635,17 @@ class CastedLinear(nn.Linear):
 
 
 def restore_low_dim_params_to_fp32(module: nn.Module) -> None:
-    # Keep small/control parameters in fp32 even when the model body runs in bf16.
+    # Keep control params and optimizer-owned embedding/output tables in fp32.
+    # On pre-Ampere GPUs this avoids GradScaler unscale errors from fp16 grads.
     with torch.no_grad():
         for name, param in module.named_parameters():
-            if (param.ndim < 2 or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)) and param.dtype != torch.float32:
+            keep_fp32 = (
+                param.ndim < 2
+                or any(pattern in name for pattern in CONTROL_TENSOR_NAME_PATTERNS)
+                or name in {"tok_emb.weight", "lm_head.weight"}
+                or name.endswith("bigram.embed.weight")
+            )
+            if keep_fp32 and param.dtype != torch.float32:
                 param.data = param.data.float()
 
 

@@ -1,0 +1,7 @@
+{
+  "name": "sp8192_legalttt_grammar_port_v1",
+  "status": "grafted_experiment",
+  "track": "non_record_experiment",
+  "base_record": "records/track_10min_16mb/2026-04-09_SP8192_3LayerRecur_ParResid_QK525_LegalTTT",
+  "notes": "Plain-text graft of the April 9 legal SP8192 record with document-local BOS-aware windows, CPU-side grammar feature workers, an input-only grammar adapter, and optional early sliding-window attention plus causal depthwise conv. Global layers keep FlashAttention-3. TTT is intentionally disabled until document-local adaptation is ported."
+}
