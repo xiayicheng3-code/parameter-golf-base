@@ -56,6 +56,9 @@ base.Hyperparameters.persistent_workers = env_bool("PERSISTENT_WORKERS", True)
 base.Hyperparameters.pin_memory = env_bool("PIN_MEMORY", True)
 base.Hyperparameters.host_prefetch_batches = int(os.environ.get("HOST_PREFETCH_BATCHES", "2"))
 base.Hyperparameters.worker_torch_threads = int(os.environ.get("WORKER_TORCH_THREADS", "1"))
+base.Hyperparameters.grad_accum_steps = int(os.environ.get("GRAD_ACCUM_STEPS", str(base.Hyperparameters.grad_accum_steps)))
+base.Hyperparameters.warmup_steps = int(os.environ.get("WARMUP_STEPS", str(base.Hyperparameters.warmup_steps)))
+base.Hyperparameters.gptq_reserve_seconds = float(os.environ.get("GPTQ_RESERVE_SECONDS", str(base.Hyperparameters.gptq_reserve_seconds)))
 base.Hyperparameters.train_feature_cache_docs = int(os.environ.get("TRAIN_FEATURE_CACHE_DOCS", "128"))
 base.Hyperparameters.cache_max_doc_tokens = int(os.environ.get("CACHE_MAX_DOC_TOKENS", "8192"))
 base.Hyperparameters.local_attn_layers = int(os.environ.get("LOCAL_ATTN_LAYERS", "0"))
@@ -63,6 +66,8 @@ base.Hyperparameters.local_window = int(os.environ.get("LOCAL_WINDOW", "128"))
 base.Hyperparameters.local_attn_chunk = int(os.environ.get("LOCAL_ATTN_CHUNK", "128"))
 base.Hyperparameters.local_conv_kernel = int(os.environ.get("LOCAL_CONV_KERNEL", "0"))
 base.Hyperparameters.shuffle_docs = env_bool("SHUFFLE_DOCS", True)
+base.Hyperparameters.compile_enabled = env_bool("COMPILE", True)
+base.Hyperparameters.eval_at_step_zero = env_bool("EVAL_AT_STEP_ZERO", True)
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,18 @@ class DocSpan:
     @property
     def pred_len(self) -> int:
         return self.raw_len - 1
+
+
+PIPELINE_STAT_NAMES = (
+    "read_ms",
+    "feature_ms",
+    "pack_ms",
+    "cache_hit",
+    "doc_pred_len",
+    "windows_per_doc",
+    "valid_len",
+    "score_len",
+)
 
 
 def serialize_grammar_tables(tables: GrammarVocabTables) -> SerializedGrammarTables:
@@ -336,15 +353,19 @@ class DocumentWindowDataset(IterableDataset):
 
             for doc_idx in cycle_doc_ids.tolist():
                 span = self.doc_spans[doc_idx]
+                read_start = time.perf_counter()
                 doc_tokens = store.read_span(span.start, span.stop)
+                read_ms = 1e3 * (time.perf_counter() - read_start)
                 pred_len = int(doc_tokens.size - 1)
                 if pred_len <= 0:
                     continue
                 feature_ids = self._cache_lookup(feature_cache, span.doc_id)
+                cache_hit = feature_ids is not None
+                feature_build_ms = 0.0
                 if feature_ids is None and builder is not None:
-                    doc_input = torch.from_numpy(doc_tokens[:-1].astype(np.int64, copy=False)).view(1, -1)
-                    with torch.inference_mode():
-                        feature_ids = builder.build_feature_ids(doc_input).squeeze(0).to(dtype=torch.uint8).contiguous().numpy()
+                    feature_start = time.perf_counter()
+                    feature_ids = builder.build_feature_ids_numpy_1d(doc_tokens[:-1])
+                    feature_build_ms = 1e3 * (time.perf_counter() - feature_start)
                     self._cache_store(feature_cache, span.doc_id, pred_len, feature_ids)
                 if self.mode == "train":
                     phase_epoch = self.epoch + cycle
@@ -355,9 +376,13 @@ class DocumentWindowDataset(IterableDataset):
                 else:
                     window_specs = eval_window_specs(pred_len, self.seq_len, self.eval_stride)
                 feat_dim = 0 if feature_ids is None else int(feature_ids.shape[1])
+                num_windows = max(len(window_specs), 1)
+                read_ms_share = read_ms / num_windows
+                feature_ms_share = feature_build_ms / num_windows
                 for start, valid_len, score_from, score_count in window_specs:
                     if valid_len <= 0 or score_count <= 0:
                         continue
+                    pack_start = time.perf_counter()
                     x = np.full((self.seq_len,), self.pad_id, dtype=np.uint16)
                     y = np.full((self.seq_len,), self.pad_id, dtype=np.uint16)
                     mask = np.zeros((self.seq_len,), dtype=np.uint8)
@@ -369,15 +394,31 @@ class DocumentWindowDataset(IterableDataset):
                     else:
                         feats = np.zeros((self.seq_len, feat_dim), dtype=np.uint8)
                         feats[:valid_len] = feature_ids[start : start + valid_len]
-                    yield x, y, feats, mask
+                    pack_ms = 1e3 * (time.perf_counter() - pack_start)
+                    per_window_stats = np.asarray(
+                        [
+                            read_ms_share,
+                            feature_ms_share,
+                            pack_ms,
+                            float(cache_hit),
+                            float(pred_len),
+                            float(num_windows),
+                            float(valid_len),
+                            float(score_count),
+                        ],
+                        dtype=np.float32,
+                    )
+                    yield x, y, feats, mask, per_window_stats
             if self.mode != "train":
                 break
             cycle += 1
 
 
-def collate_windows(batch: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    xs, ys, feats, masks = zip(*batch, strict=True)
-    return np.stack(xs), np.stack(ys), np.stack(feats), np.stack(masks)
+def collate_windows(
+    batch: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    xs, ys, feats, masks, stats = zip(*batch, strict=True)
+    return np.stack(xs), np.stack(ys), np.stack(feats), np.stack(masks), np.stack(stats)
 
 
 def local_chunk_mask(query_len: int, history_len: int, window: int, device: torch.device, dtype: torch.dtype) -> Tensor:
@@ -449,7 +490,7 @@ class HostBatchPrefetcher:
         finally:
             self.queue.put(self._sentinel)
 
-    def next(self) -> tuple[Tensor, Tensor, Tensor, Tensor] | None:
+    def next(self) -> tuple[Tensor, ...] | None:
         item = self.queue.get()
         if item is self._sentinel:
             if self._error is not None:
@@ -466,7 +507,7 @@ class DevicePrefetcher:
         self.loader = None if self.use_host_thread else iter(loader)
         self.device = device
         self.stream = torch.cuda.Stream(device=device) if device.type == "cuda" else None
-        self.next_batch: tuple[Tensor, Tensor, Tensor, Tensor] | None = None
+        self.next_batch: tuple[Tensor, ...] | None = None
         self.preload()
 
     def preload(self) -> None:
@@ -490,7 +531,7 @@ class DevicePrefetcher:
         with torch.cuda.stream(self.stream):
             self.next_batch = tuple(t.to(self.device, non_blocking=True) for t in batch)
 
-    def next(self) -> tuple[Tensor, Tensor, Tensor, Tensor] | None:
+    def next(self) -> tuple[Tensor, ...] | None:
         if self.next_batch is None:
             return None
         if self.stream is not None:
@@ -734,6 +775,51 @@ class PatchedGPT(base.GPT):
         return (per_token * mask).sum() / denom
 
 
+class PatchedOptimizers(base.Optimizers):
+    def __init__(self, h, base_model):
+        super().__init__(h, base_model)
+        self.optimizer_grammar = None
+        grammar_adapter = getattr(base_model, "grammar_adapter", None)
+        if grammar_adapter is None:
+            return
+        grammar_embed_params = [param for emb in grammar_adapter.embeddings for param in emb.parameters() if param.requires_grad]
+        grammar_ctrl_params = [
+            param
+            for param in (grammar_adapter.feature_scale, grammar_adapter.gate)
+            if param is not None and param.requires_grad
+        ]
+        if not grammar_embed_params and not grammar_ctrl_params:
+            return
+        grammar_param_groups = []
+        if grammar_embed_params:
+            grammar_param_groups.append(
+                {
+                    "params": grammar_embed_params,
+                    "lr": h.embed_lr,
+                    "base_lr": h.embed_lr,
+                    "weight_decay": h.embed_wd,
+                }
+            )
+        if grammar_ctrl_params:
+            grammar_param_groups.append(
+                {
+                    "params": grammar_ctrl_params,
+                    "lr": h.scalar_lr,
+                    "base_lr": h.scalar_lr,
+                    "weight_decay": h.adam_wd,
+                }
+            )
+        use_fused = any(param.is_cuda for param in grammar_embed_params + grammar_ctrl_params)
+        self.optimizer_grammar = torch.optim.AdamW(
+            grammar_param_groups,
+            betas=(h.beta1, h.beta2),
+            eps=h.adam_eps,
+            fused=use_fused,
+        )
+        insert_idx = 1 if self.optimizer_head is not None else 1
+        self.optimizers.insert(insert_idx, self.optimizer_grammar)
+
+
 def build_eval_loader(h, val_data: ValidationData) -> DataLoader | None:
     if not h.doc_local_windows:
         return None
@@ -761,21 +847,82 @@ def _loss_bpb(loss_sum: Tensor, token_count: Tensor, byte_count: Tensor) -> tupl
     return base._loss_bpb(loss_sum, token_count, byte_count)
 
 
+def sync_device(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+def format_ms(value_ms: float) -> str:
+    if value_ms >= 1000.0:
+        return f"{value_ms / 1000.0:.2f}s"
+    return f"{value_ms:.0f}ms"
+
+
+def summarize_pipeline_stats(stats: Tensor | None) -> dict[str, float]:
+    summary = {name: 0.0 for name in PIPELINE_STAT_NAMES}
+    if stats is None or stats.numel() == 0:
+        return summary
+    stats_f = stats.detach().to(dtype=torch.float32)
+    sums = stats_f.sum(dim=0)
+    means = stats_f.mean(dim=0)
+    summary["read_ms"] = float(sums[0].item())
+    summary["feature_ms"] = float(sums[1].item())
+    summary["pack_ms"] = float(sums[2].item())
+    summary["cache_hit"] = float(means[3].item())
+    summary["doc_pred_len"] = float(means[4].item())
+    summary["windows_per_doc"] = float(means[5].item())
+    summary["valid_len"] = float(means[6].item())
+    summary["score_len"] = float(means[7].item())
+    return summary
+
+
 def evaluate_doc_loader(h, device: torch.device, val_data: ValidationData, model, loader: DataLoader | None) -> tuple[float, float]:
     if not h.doc_local_windows:
         return ORIG_EVAL_VAL(h, device, val_data, model)
     assert loader is not None
+    local_batch_tokens = h.val_batch_tokens // (h.world_size * h.grad_accum_steps)
+    expected_batch_size = max(local_batch_tokens // h.eval_seq_len, 1)
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
     model.eval()
     prefetcher = DevicePrefetcher(loader, device, h.pin_memory, h.host_prefetch_batches)
+    pipeline_totals = {name: 0.0 for name in PIPELINE_STAT_NAMES}
+    eval_batches = 0
     with torch.inference_mode():
         while True:
             batch = prefetcher.next()
             if batch is None:
                 break
-            x, y, feats, loss_mask = batch
+            batch_stats = None
+            if len(batch) == 5:
+                x, y, feats, loss_mask, batch_stats = batch
+                batch_summary = summarize_pipeline_stats(batch_stats)
+                for key, value in batch_summary.items():
+                    pipeline_totals[key] += value
+            else:
+                x, y, feats, loss_mask = batch
+            eval_batches += 1
+            if x.size(0) != expected_batch_size:
+                pad_rows = expected_batch_size - x.size(0)
+                if pad_rows <= 0:
+                    raise ValueError(f"Unexpected eval batch size {x.size(0)} with expected_batch_size={expected_batch_size}")
+                x = torch.cat(
+                    [x, torch.full((pad_rows, x.size(1)), h._pad_id, dtype=x.dtype, device=x.device)],
+                    dim=0,
+                )
+                y = torch.cat(
+                    [y, torch.full((pad_rows, y.size(1)), h._pad_id, dtype=y.dtype, device=y.device)],
+                    dim=0,
+                )
+                feats = torch.cat(
+                    [feats, torch.zeros((pad_rows, feats.size(1), feats.size(2)), dtype=feats.dtype, device=feats.device)],
+                    dim=0,
+                )
+                loss_mask = torch.cat(
+                    [loss_mask, torch.zeros((pad_rows, loss_mask.size(1)), dtype=loss_mask.dtype, device=loss_mask.device)],
+                    dim=0,
+                )
             grammar_feature_ids = feats if feats.size(-1) > 0 else None
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 batch_loss = model(x, y, grammar_feature_ids=grammar_feature_ids, loss_mask=loss_mask).detach()
@@ -792,6 +939,19 @@ def evaluate_doc_loader(h, device: torch.device, val_data: ValidationData, model
         dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(token_count, op=dist.ReduceOp.SUM)
         dist.all_reduce(byte_count, op=dist.ReduceOp.SUM)
+    if eval_batches > 0:
+        base.log(
+            "eval_pipeline:"
+            f" batches={eval_batches}"
+            f" read={format_ms(pipeline_totals['read_ms'])}"
+            f" feature={format_ms(pipeline_totals['feature_ms'])}"
+            f" pack={format_ms(pipeline_totals['pack_ms'])}"
+            f" cache_hit={pipeline_totals['cache_hit'] / eval_batches:.2f}"
+            f" avg_doc_len={pipeline_totals['doc_pred_len'] / eval_batches:.0f}"
+            f" avg_windows={pipeline_totals['windows_per_doc'] / eval_batches:.2f}"
+            f" avg_valid={pipeline_totals['valid_len'] / eval_batches:.0f}"
+            f" avg_score={pipeline_totals['score_len'] / eval_batches:.0f}"
+        )
     model.train()
     return _loss_bpb(loss_sum, token_count, byte_count)
 
@@ -835,6 +995,9 @@ def collect_hessians(model, train_loader, h, device, n_calibration_batches=64):
             if len(batch) == 2:
                 x, _ = batch
                 grammar_feature_ids = None
+            elif len(batch) == 5:
+                x, _, feats, _, _ = batch
+                grammar_feature_ids = feats if feats.size(-1) > 0 else None
             else:
                 x, _, feats, _ = batch
                 grammar_feature_ids = feats if feats.size(-1) > 0 else None
@@ -867,12 +1030,27 @@ def gptq_mixed_quantize(state_dict, hessians, h):
 def train_model(h, device: torch.device, val_data: ValidationData):
     base_model = base.GPT(h).to(device).bfloat16()
     base.restore_fp32_params(base_model)
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
+    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True) if h.compile_enabled else base_model
     if h.distributed:
         model = DDP(compiled_model, device_ids=[h.local_rank], broadcast_buffers=False)
     else:
         model = compiled_model
     base.log(f"model_params:{sum(p.numel() for p in base_model.parameters())}")
+    if getattr(base_model, "grammar_adapter", None) is not None:
+        base.log(
+            f"grammar_params:{sum(p.numel() for p in base_model.grammar_adapter.parameters())}"
+            f" gate_init:{float(base_model.grammar_adapter.gate.detach().cpu()):.8f}"
+        )
+    base.log(
+        "runtime_flags:"
+        f" compile={int(h.compile_enabled)}"
+        f" warmup_steps={h.warmup_steps}"
+        f" grad_accum={h.grad_accum_steps}"
+        f" eval_at_step_zero={int(h.eval_at_step_zero)}"
+        f" workers={h.num_workers}"
+        f" host_prefetch={h.host_prefetch_batches}"
+        f" pin_memory={int(h.pin_memory)}"
+    )
     optimizers = base.Optimizers(h, base_model)
     train_loader = base.ShuffledSequenceLoader(h, device)
     val_data.eval_loader = build_eval_loader(h, val_data)
@@ -893,24 +1071,42 @@ def train_model(h, device: torch.device, val_data: ValidationData):
             return max((1.0 - frac) / h.warmdown_frac, h.min_lr)
         return 1.0
 
-    def step_fn(step, lr_scale):
+    def step_fn(step, lr_scale, capture_timing=False):
         optimizers.zero_grad_all()
         train_loss = torch.zeros((), device=device)
+        data_ms = 0.0
+        model_ms = 0.0
+        opt_ms = 0.0
+        pipeline_totals = {name: 0.0 for name in PIPELINE_STAT_NAMES}
+        step_start = time.perf_counter() if capture_timing else 0.0
         for micro_step in range(h.grad_accum_steps):
             if h.distributed:
                 model.require_backward_grad_sync = micro_step == h.grad_accum_steps - 1
+            data_start = time.perf_counter() if capture_timing else 0.0
             batch = train_loader.next_batch(h.train_batch_tokens, h.grad_accum_steps)
+            if capture_timing:
+                data_ms += 1e3 * (time.perf_counter() - data_start)
             if len(batch) == 2:
                 x, y = batch
                 feats = None
                 loss_mask = None
+            elif len(batch) == 5:
+                x, y, feats, loss_mask, batch_stats = batch
+                feats = feats if feats.size(-1) > 0 else None
+                batch_summary = summarize_pipeline_stats(batch_stats)
+                for key, value in batch_summary.items():
+                    pipeline_totals[key] += value
             else:
                 x, y, feats, loss_mask = batch
                 feats = feats if feats.size(-1) > 0 else None
+            model_start = time.perf_counter() if capture_timing else 0.0
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 loss = model(x, y, grammar_feature_ids=feats, loss_mask=loss_mask)
             train_loss += loss.detach()
             (loss / h.grad_accum_steps).backward()
+            if capture_timing:
+                sync_device(device)
+                model_ms += 1e3 * (time.perf_counter() - model_start)
         train_loss /= h.grad_accum_steps
         frac = min(step / h.muon_momentum_warmup_steps, 1.0) if h.muon_momentum_warmup_steps > 0 else 1.0
         muon_momentum = (1 - frac) * h.muon_momentum_warmup_start + frac * h.muon_momentum
@@ -921,24 +1117,67 @@ def train_model(h, device: torch.device, val_data: ValidationData):
                 group["lr"] = group["base_lr"] * lr_scale
         if h.grad_clip_norm > 0:
             torch.nn.utils.clip_grad_norm_(base_model.parameters(), h.grad_clip_norm)
+        opt_start = time.perf_counter() if capture_timing else 0.0
         optimizers.step()
-        return train_loss
+        if capture_timing:
+            sync_device(device)
+            opt_ms += 1e3 * (time.perf_counter() - opt_start)
+            step_ms = 1e3 * (time.perf_counter() - step_start)
+        else:
+            step_ms = 0.0
+        return train_loss, {
+            "step_ms": step_ms,
+            "data_ms": data_ms,
+            "model_ms": model_ms,
+            "opt_ms": opt_ms,
+            **pipeline_totals,
+        }
 
     if h.warmup_steps > 0:
         initial_model_state = {name: tensor.detach().cpu().clone() for name, tensor in base_model.state_dict().items()}
         initial_optimizer_states = [base.copy.deepcopy(opt.state_dict()) for opt in optimizers]
         model.train()
         for warmup_step in range(h.warmup_steps):
-            step_fn(warmup_step, 1.0)
+            warmup_loss, warmup_metrics = step_fn(warmup_step, 1.0, capture_timing=True)
             if warmup_step <= 5 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == h.warmup_steps:
-                base.log(f"warmup_step: {warmup_step + 1}/{h.warmup_steps}")
+                base.log(
+                    f"warmup_step: {warmup_step + 1}/{h.warmup_steps}"
+                    f" loss={warmup_loss.item():.4f}"
+                    f" step={format_ms(warmup_metrics['step_ms'])}"
+                    f" data={format_ms(warmup_metrics['data_ms'])}"
+                    f" model={format_ms(warmup_metrics['model_ms'])}"
+                    f" opt={format_ms(warmup_metrics['opt_ms'])}"
+                    f" read={format_ms(warmup_metrics['read_ms'])}"
+                    f" feature={format_ms(warmup_metrics['feature_ms'])}"
+                    f" pack={format_ms(warmup_metrics['pack_ms'])}"
+                    f" cache_hit={warmup_metrics['cache_hit'] / max(h.grad_accum_steps, 1):.2f}"
+                    f" avg_doc_len={warmup_metrics['doc_pred_len'] / max(h.grad_accum_steps, 1):.0f}"
+                    f" avg_windows={warmup_metrics['windows_per_doc'] / max(h.grad_accum_steps, 1):.2f}"
+                    f" avg_valid={warmup_metrics['valid_len'] / max(h.grad_accum_steps, 1):.0f}"
+                    f" avg_score={warmup_metrics['score_len'] / max(h.grad_accum_steps, 1):.0f}"
+                )
         if h.num_loops > 0:
             base_model.looping_active = True
             base.log(f"loop_warmup:enabled encoder:{base_model.encoder_indices} decoder:{base_model.decoder_indices}")
             for warmup_step in range(h.warmup_steps):
-                step_fn(warmup_step, 1.0)
+                warmup_loss, warmup_metrics = step_fn(warmup_step, 1.0, capture_timing=True)
                 if warmup_step <= 5 or (warmup_step + 1) % 10 == 0 or warmup_step + 1 == h.warmup_steps:
-                    base.log(f"loop_warmup_step: {warmup_step + 1}/{h.warmup_steps}")
+                    base.log(
+                        f"loop_warmup_step: {warmup_step + 1}/{h.warmup_steps}"
+                        f" loss={warmup_loss.item():.4f}"
+                        f" step={format_ms(warmup_metrics['step_ms'])}"
+                        f" data={format_ms(warmup_metrics['data_ms'])}"
+                        f" model={format_ms(warmup_metrics['model_ms'])}"
+                        f" opt={format_ms(warmup_metrics['opt_ms'])}"
+                        f" read={format_ms(warmup_metrics['read_ms'])}"
+                        f" feature={format_ms(warmup_metrics['feature_ms'])}"
+                        f" pack={format_ms(warmup_metrics['pack_ms'])}"
+                        f" cache_hit={warmup_metrics['cache_hit'] / max(h.grad_accum_steps, 1):.2f}"
+                        f" avg_doc_len={warmup_metrics['doc_pred_len'] / max(h.grad_accum_steps, 1):.0f}"
+                        f" avg_windows={warmup_metrics['windows_per_doc'] / max(h.grad_accum_steps, 1):.2f}"
+                        f" avg_valid={warmup_metrics['valid_len'] / max(h.grad_accum_steps, 1):.0f}"
+                        f" avg_score={warmup_metrics['score_len'] / max(h.grad_accum_steps, 1):.0f}"
+                    )
             base_model.looping_active = False
         base_model.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(optimizers, initial_optimizer_states, strict=True):
@@ -951,18 +1190,24 @@ def train_model(h, device: torch.device, val_data: ValidationData):
     ema_state = {name: tensor.detach().float().clone() for name, tensor in base_model.state_dict().items()}
     training_time_ms = 0.0
     stop_after_step = None
-    torch.cuda.synchronize()
+    sync_device(device)
     t0 = time.perf_counter()
     step = 0
     while True:
         last_step = step == h.iterations or (stop_after_step is not None and step >= stop_after_step)
-        should_validate = last_step or (h.val_loss_every > 0 and step % h.val_loss_every == 0)
+        should_validate = last_step or (
+            h.val_loss_every > 0
+            and step % h.val_loss_every == 0
+            and (step > 0 or h.eval_at_step_zero)
+        )
         if should_validate:
-            torch.cuda.synchronize()
+            sync_device(device)
             training_time_ms += 1e3 * (time.perf_counter() - t0)
+            eval_start = time.perf_counter()
             val_loss, val_bpb = base.eval_val(h, device, val_data, model)
-            base.log(f"{step}/{h.iterations} val_loss: {val_loss:.4f} val_bpb: {val_bpb:.4f}")
-            torch.cuda.synchronize()
+            sync_device(device)
+            eval_ms = 1e3 * (time.perf_counter() - eval_start)
+            base.log(f"{step}/{h.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} eval:{format_ms(eval_ms)}")
             t0 = time.perf_counter()
         if last_step:
             if stop_after_step is not None and step < h.iterations:
@@ -974,19 +1219,41 @@ def train_model(h, device: torch.device, val_data: ValidationData):
         if h.num_loops > 0 and not base_model.looping_active and frac >= h.enable_looping_at:
             base_model.looping_active = True
             base.log(f"layer_loop:enabled step:{step} frac:{frac:.3f} encoder:{base_model.encoder_indices} decoder:{base_model.decoder_indices}")
-        train_loss = step_fn(step, scale)
+        should_log_train = h.train_log_every > 0 and (step < 5 or (step + 1) % h.train_log_every == 0 or stop_after_step is not None)
+        train_loss, step_metrics = step_fn(step, scale, capture_timing=should_log_train)
         with torch.no_grad():
             for name, tensor in base_model.state_dict().items():
                 ema_state[name].mul_(h.ema_decay).add_(tensor.detach().float(), alpha=1.0 - h.ema_decay)
         step += 1
         approx_training_time_ms = training_time_ms + 1e3 * (time.perf_counter() - t0)
-        should_log_train = h.train_log_every > 0 and (step <= 5 or step % h.train_log_every == 0 or stop_after_step is not None)
         if should_log_train:
             tok_per_sec = step * h.train_batch_tokens / (approx_training_time_ms / 1e3)
             extra = ""
             if h.use_grammar and getattr(base_model, "grammar_adapter", None) is not None:
-                extra = f" grammar_gate:{float(base_model.grammar_adapter.gate.detach().cpu()):.5f}"
-            base.log(f"{step}/{h.iterations} train_loss: {train_loss.item():.4f} train_time: {approx_training_time_ms/60000:.1f}m tok/s: {tok_per_sec:.0f}{extra}")
+                extra = f" grammar_gate:{float(base_model.grammar_adapter.gate.detach().cpu()):.8f}"
+            base.log(
+                f"{step}/{h.iterations}"
+                f" train_loss:{train_loss.item():.4f}"
+                f" lr_scale:{scale:.3f}"
+                f" train_time:{approx_training_time_ms/60000:.2f}m"
+                f" tok/s:{tok_per_sec:.0f}"
+                f" step:{format_ms(step_metrics['step_ms'])}"
+                f" data:{format_ms(step_metrics['data_ms'])}"
+                f" model:{format_ms(step_metrics['model_ms'])}"
+                f" opt:{format_ms(step_metrics['opt_ms'])}"
+                f" read:{format_ms(step_metrics['read_ms'])}"
+                f" feature:{format_ms(step_metrics['feature_ms'])}"
+                f" pack:{format_ms(step_metrics['pack_ms'])}"
+                f" cache_hit:{step_metrics['cache_hit'] / max(h.grad_accum_steps, 1):.2f}"
+                f" avg_doc_len:{step_metrics['doc_pred_len'] / max(h.grad_accum_steps, 1):.0f}"
+                f" avg_windows:{step_metrics['windows_per_doc'] / max(h.grad_accum_steps, 1):.2f}"
+                f" avg_valid:{step_metrics['valid_len'] / max(h.grad_accum_steps, 1):.0f}"
+                f" avg_score:{step_metrics['score_len'] / max(h.grad_accum_steps, 1):.0f}"
+                f" grad_accum:{h.grad_accum_steps}"
+                f" workers:{h.num_workers}"
+                f" compile:{int(h.compile_enabled)}"
+                f"{extra}"
+            )
         reached_cap = max_wallclock_ms is not None and approx_training_time_ms >= max_wallclock_ms
         if h.distributed and max_wallclock_ms is not None:
             reached_cap_tensor = torch.tensor(int(reached_cap), device=device)
@@ -1054,7 +1321,7 @@ def train_and_eval(h, device):
     eval_model = base.deserialize(h, device)
     if h.num_loops > 0:
         eval_model.looping_active = True
-    compiled_model = torch.compile(eval_model, dynamic=False, fullgraph=True)
+    compiled_model = torch.compile(eval_model, dynamic=False, fullgraph=True) if h.compile_enabled else eval_model
     base.timed_eval("quantized", base.eval_val, h, device, val_data, compiled_model)
     if h.sliding_window_enabled:
         base.timed_eval("quantized_doc_rolling" if h.doc_local_windows else "quantized_sliding_window", base.eval_val_sliding, h, device, val_data, eval_model)
@@ -1077,6 +1344,7 @@ base.ShuffledSequenceLoader = ShuffledSequenceLoader
 base.CausalSelfAttention = PatchedCausalSelfAttention
 base.Block = PatchedBlock
 base.GPT = PatchedGPT
+base.Optimizers = PatchedOptimizers
 base.collect_hessians = collect_hessians
 base.gptq_mixed_quantize = gptq_mixed_quantize
 base.train_model = train_model

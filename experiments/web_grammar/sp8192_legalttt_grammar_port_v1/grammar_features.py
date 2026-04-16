@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import numpy as np
 import re
 from typing import Any
 
@@ -213,7 +214,6 @@ CHAIN_AFTER_CLOSE = 4
 CHAIN_COUNT = 5
 
 FEATURE_NAMES = (
-    "line_state",
     "indent_bucket",
     "mode",
     "html_phase",
@@ -251,7 +251,6 @@ FEATURE_NAMES = (
     "abbrev_state",
 )
 FEATURE_SIZES = (
-    LINE_COUNT,
     LEN_BUCKET_COUNT,
     MODE_COUNT,
     HTML_COUNT,
@@ -599,6 +598,38 @@ def _run_bucket(values: Tensor) -> Tensor:
     return out
 
 
+def _len_bucket_scalar(value: int) -> int:
+    if value >= 31:
+        return 7
+    if value >= 15:
+        return 6
+    if value >= 9:
+        return 5
+    if value >= 5:
+        return 4
+    if value >= 3:
+        return 3
+    if value >= 2:
+        return 2
+    if value >= 1:
+        return 1
+    return 0
+
+
+def _run_bucket_scalar(value: int) -> int:
+    if value >= 9:
+        return 5
+    if value >= 5:
+        return 4
+    if value >= 3:
+        return 3
+    if value >= 2:
+        return 2
+    if value >= 1:
+        return 1
+    return 0
+
+
 class GrammarStateEmbedding(nn.Module):
     def __init__(self, tables: GrammarVocabTables, dim: int, init_scale: float = 0.0):
         super().__init__()
@@ -612,8 +643,514 @@ class GrammarStateEmbedding(nn.Module):
         self.embeddings = nn.ModuleList([nn.Embedding(size, dim) for size in FEATURE_SIZES])
         self.feature_scale = nn.Parameter(torch.ones(len(FEATURE_SIZES), dtype=torch.float32))
         self.gate = nn.Parameter(torch.tensor(float(init_scale), dtype=torch.float32))
+        self._numpy_lut_cache: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None
         for emb in self.embeddings:
             nn.init.normal_(emb.weight, mean=0.0, std=dim ** -0.5)
+
+    def _numpy_luts(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if self._numpy_lut_cache is None:
+            self._numpy_lut_cache = (
+                self.token_class_lut.detach().cpu().numpy().astype(np.int16, copy=False),
+                self.lexical_role_lut.detach().cpu().numpy().astype(np.int16, copy=False),
+                self.shape_lut.detach().cpu().numpy().astype(np.int16, copy=False),
+                self.quote_kind_lut.detach().cpu().numpy().astype(np.int16, copy=False),
+                self.tag_class_lut.detach().cpu().numpy().astype(np.int16, copy=False),
+                self.flags_lut.detach().cpu().numpy().astype(np.int64, copy=False),
+            )
+        return self._numpy_lut_cache
+
+    def build_feature_ids_numpy_1d(self, input_ids: np.ndarray) -> np.ndarray:
+        ids = np.asarray(input_ids, dtype=np.int64).reshape(-1)
+        steps = int(ids.shape[0])
+        features = np.empty((steps, len(FEATURE_SIZES)), dtype=np.uint8)
+        token_class_lut, lexical_role_lut, shape_lut, quote_kind_lut, tag_class_lut, flags_lut = self._numpy_luts()
+
+        line_state = LINE_START
+        indent_len = 0
+        mode = MODE_PLAIN
+        html_phase = HTML_OUT
+        json_depth = 0
+        json_expect = JSON_OUT
+        url_phase = URL_OUT
+        markdown_phase = MARKDOWN_OUT
+        code_phase = CODE_OUT
+        quote_mode = QUOTE_NONE
+        scope_state = SCOPE_NONE
+        quote_len = 0
+        prose_state = PROSE_SENTENCE_START
+        sentence_len = 0
+        clause_len = 0
+        bracket_depth = 0
+        same_class_run = 0
+        prev_class = TOKEN_OTHER
+        followup_edge_state = EDGE_NONE
+        stack_top_type = STACK_NONE
+        stack_depth = 0
+        stack_parent_type = STACK_NONE
+        stack_slots = [STACK_NONE for _ in range(DEPTH_COUNT - 1)]
+        html_top_tag_class = TAG_OTHER
+        html_tag_depth = 0
+        json_container_top = JSON_CONTAINER_NONE
+        markdown_heading_level = 0
+        markdown_list_depth = 0
+        markdown_table_col = 0
+        markdown_fence_state = 0
+        last_indent_bucket = 0
+        indent_delta = INDENT_DELTA_NONE
+        blank_line_run = 0
+        line_token_count = 0
+        member_chain_state = CHAIN_NONE
+        key_value_side = KEYVAL_NONE
+        code_call_arg_count = 0
+        prose_clause_stack = PROSE_CLAUSE_NONE
+        serial_edge_state = EDGE_NONE
+        abbrev_state = ABBREV_NONE
+
+        for pos, tok in enumerate(ids.tolist()):
+            tok_class = int(token_class_lut[tok])
+            role = int(lexical_role_lut[tok])
+            shape = int(shape_lut[tok])
+            quote_kind = int(quote_kind_lut[tok])
+            tag_class = int(tag_class_lut[tok])
+            flags = int(flags_lut[tok])
+
+            is_bos = bool(flags & F_BOS)
+            is_space = bool(flags & F_SPACE)
+            is_newline = bool(flags & F_NEWLINE)
+            is_sent_end = bool(flags & F_SENT_END)
+            is_comma = bool(flags & F_COMMA)
+            starts_html = bool(flags & F_HTML_START)
+            ends_html = bool(flags & F_HTML_END)
+            is_urlish = bool(flags & F_URLISH)
+            opens_json = bool(flags & F_JSON_OPEN)
+            closes_json = bool(flags & F_JSON_CLOSE)
+            opens_paren = bool(flags & F_PAREN_OPEN)
+            closes_paren = bool(flags & F_PAREN_CLOSE)
+            is_markdown = bool(flags & F_MARKDOWN)
+            is_codeish = bool(flags & F_CODEISH)
+            is_colon = bool(flags & F_COLON)
+            is_semicolon = bool(flags & F_SEMICOLON)
+            is_equals = bool(flags & F_EQUALS)
+            is_hash = bool(flags & F_HASH)
+            is_dash = bool(flags & F_DASH)
+            is_pipe = bool(flags & F_PIPE)
+            is_query = bool(flags & F_QUERY)
+            is_fragment = bool(flags & F_FRAGMENT)
+            opens_brace = bool(flags & F_LBRACE)
+            closes_brace = bool(flags & F_RBRACE)
+            opens_bracket = bool(flags & F_LBRACKET)
+            closes_bracket = bool(flags & F_RBRACKET)
+            opens_round = bool(flags & F_LPAREN)
+            closes_round = bool(flags & F_RPAREN)
+            is_dot = bool(flags & F_DOT)
+            is_slash = bool(flags & F_SLASH)
+            is_scheme_delim = bool(flags & F_SCHEME_DELIM)
+            is_single_upper = bool(flags & F_SINGLE_UPPER)
+            is_single_lower = bool(flags & F_SINGLE_LOWER)
+            is_word = tok_class in (TOKEN_ALPHA, TOKEN_DIGIT)
+            is_tokenish = not (is_space or is_newline)
+            is_layout_token = tok_class in (TOKEN_SPACE, TOKEN_NEWLINE)
+            line_like_start = line_state in (LINE_START, LINE_AFTER_INDENT)
+            prev_html_phase = html_phase
+            current_followup_edge = EDGE_NONE if is_layout_token else followup_edge_state
+            current_member_chain = CHAIN_NONE if is_layout_token else member_chain_state
+
+            same_class_run = same_class_run + 1 if tok_class == prev_class else 1
+            prev_class = tok_class
+
+            json_depth = max(0, min(DEPTH_COUNT - 1, json_depth + int(opens_json) - int(closes_json)))
+            bracket_depth = max(0, min(DEPTH_COUNT - 1, bracket_depth + int(opens_paren) - int(closes_paren)))
+
+            entering_quote = quote_kind != QUOTE_NONE and quote_mode == QUOTE_NONE
+            leaving_quote = quote_kind != QUOTE_NONE and quote_mode == quote_kind
+            if leaving_quote:
+                quote_mode = QUOTE_NONE
+            if entering_quote:
+                quote_mode = quote_kind
+            quote_len = 0 if quote_mode == QUOTE_NONE else quote_len + int(is_tokenish)
+
+            any_struct_close = closes_brace or closes_bracket or closes_round or ends_html
+            jsonish_context = (mode == MODE_JSON) or (json_depth > 0) or opens_json
+            bracket_top = STACK_JSON_ARRAY if jsonish_context else STACK_BRACKET
+            brace_top = STACK_JSON_OBJECT if jsonish_context else STACK_BRACE
+            open_type = STACK_NONE
+            if opens_round:
+                open_type = STACK_PAREN
+            if opens_bracket:
+                open_type = bracket_top
+            if opens_brace:
+                open_type = brace_top
+            if starts_html:
+                open_type = STACK_HTML
+            if open_type != STACK_NONE:
+                open_slot = min(stack_depth, DEPTH_COUNT - 2)
+                stack_slots[open_slot] = open_type
+            stack_depth = max(0, min(DEPTH_COUNT - 1, stack_depth + int(open_type != STACK_NONE) - int(any_struct_close)))
+            stack_top_type = stack_slots[stack_depth - 1] if stack_depth > 0 else STACK_NONE
+            stack_parent_type = stack_slots[stack_depth - 2] if stack_depth > 1 else STACK_NONE
+
+            protected_scope = ((json_depth > 0) and (quote_mode != QUOTE_NONE)) or (html_phase == HTML_QUOTED_ATTR)
+            if mode == MODE_URL and (is_space or is_newline or ends_html):
+                mode = MODE_PLAIN
+            if starts_html:
+                mode = MODE_HTML
+            if is_urlish and (not is_space) and (not is_newline) and (not protected_scope) and mode in (MODE_PLAIN, MODE_URL):
+                mode = MODE_URL
+            if json_depth > 0 and mode == MODE_PLAIN:
+                mode = MODE_JSON
+            if json_depth == 0 and mode == MODE_JSON:
+                mode = MODE_PLAIN
+            if is_markdown and line_like_start and mode == MODE_PLAIN:
+                mode = MODE_MARKDOWN
+            if is_codeish and mode == MODE_PLAIN and not protected_scope:
+                mode = MODE_CODE
+            if is_newline and mode in (MODE_MARKDOWN, MODE_CODE):
+                mode = MODE_PLAIN
+            if mode == MODE_HTML and ends_html:
+                mode = MODE_PLAIN
+
+            if starts_html:
+                html_phase = HTML_AFTER_LT
+            if html_phase == HTML_AFTER_LT and is_slash:
+                html_phase = HTML_CLOSING
+            if html_phase == HTML_AFTER_LT and (tok_class == TOKEN_ALPHA or role == ROLE_HTML_TAG):
+                html_phase = HTML_TAG_NAME
+            if html_phase == HTML_TAG_NAME and is_space:
+                html_phase = HTML_ATTR_NAME
+            if html_phase == HTML_ATTR_NAME and is_equals:
+                html_phase = HTML_AFTER_EQUALS
+            if html_phase == HTML_AFTER_EQUALS and quote_kind != QUOTE_NONE:
+                html_phase = HTML_QUOTED_ATTR
+            if html_phase == HTML_QUOTED_ATTR and leaving_quote:
+                html_phase = HTML_ATTR_NAME
+            opening_tag_name = prev_html_phase == HTML_AFTER_LT and tag_class != TAG_OTHER
+            closing_tag_name = prev_html_phase == HTML_CLOSING and tag_class != TAG_OTHER
+            html_tag_depth = max(0, min(DEPTH_COUNT - 1, html_tag_depth + int(opening_tag_name) - int(closing_tag_name)))
+            if opening_tag_name:
+                html_top_tag_class = tag_class
+            if html_tag_depth == 0:
+                html_top_tag_class = TAG_OTHER
+            if ends_html or is_newline:
+                html_phase = HTML_OUT
+
+            if opens_brace:
+                json_container_top = JSON_CONTAINER_OBJECT
+            if opens_bracket:
+                json_container_top = JSON_CONTAINER_ARRAY
+            if json_depth == 0:
+                json_container_top = JSON_CONTAINER_NONE
+            json_expect = JSON_OUT if json_depth == 0 else json_expect
+            if opens_json:
+                json_expect = JSON_EXPECT_KEY
+            if json_depth > 0 and is_comma:
+                json_expect = JSON_EXPECT_KEY
+            if json_depth > 0 and is_colon:
+                json_expect = JSON_EXPECT_VALUE
+            if json_depth > 0 and quote_mode != QUOTE_NONE:
+                json_expect = JSON_IN_STRING
+            if json_depth > 0 and leaving_quote and json_expect == JSON_IN_STRING:
+                json_expect = JSON_AFTER_VALUE
+            if json_depth > 0 and role == ROLE_JSON_KEYWORD:
+                json_expect = JSON_AFTER_VALUE
+            if closes_json and json_depth == 0:
+                json_expect = JSON_OUT
+
+            if is_urlish and (not is_space) and (not is_newline):
+                url_phase = URL_HOST
+            if url_phase != URL_OUT and tok_class == TOKEN_SLASH and not is_scheme_delim:
+                url_phase = URL_PATH
+            if url_phase != URL_OUT and is_query:
+                url_phase = URL_QUERY
+            if url_phase != URL_OUT and is_fragment:
+                url_phase = URL_FRAGMENT
+            if url_phase != URL_OUT and (is_space or is_newline or ends_html):
+                url_phase = URL_OUT
+
+            if is_newline:
+                markdown_phase = MARKDOWN_OUT
+                markdown_table_col = 0
+                markdown_heading_level = 0
+                markdown_list_depth = 0
+            if line_like_start and is_hash:
+                markdown_phase = MARKDOWN_HEADING
+                markdown_heading_level = min(HEADING_LEVEL_COUNT - 1, markdown_heading_level + 1)
+            if line_like_start and is_dash:
+                markdown_phase = MARKDOWN_LIST
+                markdown_list_depth = min(DEPTH_COUNT - 1, _len_bucket_scalar(indent_len))
+            if line_like_start and starts_html:
+                markdown_phase = MARKDOWN_QUOTE
+            if is_pipe:
+                markdown_phase = MARKDOWN_TABLE
+                markdown_table_col += 1
+            if quote_kind == QUOTE_BACKTICK:
+                markdown_phase = MARKDOWN_CODE_FENCE
+            if line_like_start and quote_kind == QUOTE_BACKTICK:
+                markdown_fence_state = 1 - markdown_fence_state
+
+            if is_newline and bracket_depth == 0:
+                code_phase = CODE_OUT
+            if is_codeish or mode == MODE_CODE:
+                code_phase = CODE_EXPR
+            if quote_mode != QUOTE_NONE and mode == MODE_CODE:
+                code_phase = CODE_STRING
+            if is_hash and mode == MODE_CODE:
+                code_phase = CODE_COMMENT
+            if bracket_depth > 0:
+                code_phase = CODE_BLOCK
+            if opens_round:
+                code_call_arg_count = 0
+            if bracket_depth > 0 and is_comma:
+                code_call_arg_count += 1
+            if closes_round:
+                code_call_arg_count = 0
+
+            prev_abbrev_state = abbrev_state
+            dot_in_abbrev = is_dot and prev_abbrev_state in (
+                ABBREV_PENDING_UPPER,
+                ABBREV_PENDING_LOWER,
+                ABBREV_CHAIN_UPPER,
+                ABBREV_CHAIN_LOWER,
+            )
+            effective_sent_end = is_sent_end and not dot_in_abbrev
+            if effective_sent_end:
+                prose_state = PROSE_SENTENCE_START
+            if is_comma:
+                prose_state = PROSE_AFTER_PUNCT
+            if role == ROLE_DETERMINER:
+                prose_state = PROSE_AFTER_DETERMINER
+            if role == ROLE_PREPOSITION:
+                prose_state = PROSE_AFTER_PREPOSITION
+            if role in (ROLE_AUXILIARY, ROLE_MODAL):
+                prose_state = PROSE_AFTER_AUX
+            subject_like = role in (ROLE_PRONOUN, ROLE_NOUNISH) or shape == SHAPE_TITLE
+            if subject_like and mode == MODE_PLAIN:
+                prose_state = PROSE_AFTER_SUBJECT
+            if role == ROLE_VERBISH and mode == MODE_PLAIN:
+                prose_state = PROSE_AFTER_VERB
+            if mode not in (MODE_PLAIN, MODE_MARKDOWN):
+                prose_state = PROSE_NEUTRAL
+            if effective_sent_end or is_newline:
+                prose_clause_stack = PROSE_CLAUSE_NONE
+            if role == ROLE_CONJUNCTION:
+                prose_clause_stack = PROSE_CLAUSE_SUBORD
+            if role == ROLE_PREPOSITION:
+                prose_clause_stack = PROSE_CLAUSE_PP
+            if role in (ROLE_AUXILIARY, ROLE_MODAL, ROLE_VERBISH):
+                prose_clause_stack = PROSE_CLAUSE_VP
+            if subject_like or role == ROLE_DETERMINER:
+                prose_clause_stack = PROSE_CLAUSE_NP
+            if mode not in (MODE_PLAIN, MODE_MARKDOWN):
+                prose_clause_stack = PROSE_CLAUSE_NONE
+
+            if is_space or is_newline:
+                abbrev_state = ABBREV_NONE
+            if is_single_upper:
+                abbrev_state = ABBREV_PENDING_UPPER
+            if is_single_lower:
+                abbrev_state = ABBREV_PENDING_LOWER
+            if is_dot and prev_abbrev_state == ABBREV_PENDING_UPPER:
+                abbrev_state = ABBREV_CHAIN_UPPER
+            if is_dot and prev_abbrev_state == ABBREV_PENDING_LOWER:
+                abbrev_state = ABBREV_CHAIN_LOWER
+            if is_word and not (is_single_upper or is_single_lower):
+                abbrev_state = ABBREV_NONE
+            if effective_sent_end and not is_dot:
+                abbrev_state = ABBREV_NONE
+
+            sentence_len = 0 if (effective_sent_end or is_newline) else sentence_len + int(is_tokenish)
+            clause_reset = effective_sent_end or is_newline or is_comma or is_colon or is_semicolon
+            clause_len = 0 if clause_reset else clause_len + int(is_tokenish)
+
+            serial_edge_state = EDGE_NONE
+            if opens_round or opens_brace or opens_bracket:
+                serial_edge_state = EDGE_AFTER_OPEN
+            if closes_round or closes_brace or closes_bracket:
+                serial_edge_state = EDGE_AFTER_CLOSE
+            if is_comma:
+                serial_edge_state = EDGE_AFTER_COMMA
+            if is_colon:
+                serial_edge_state = EDGE_AFTER_COLON
+            if is_equals:
+                serial_edge_state = EDGE_AFTER_EQUALS
+            if is_scheme_delim:
+                serial_edge_state = EDGE_AFTER_SCHEME
+            if is_dot and not dot_in_abbrev:
+                serial_edge_state = EDGE_AFTER_DOT
+            if entering_quote:
+                serial_edge_state = EDGE_AFTER_OPEN_QUOTE
+            if leaving_quote:
+                serial_edge_state = EDGE_AFTER_CLOSE_QUOTE
+            if not is_layout_token:
+                followup_edge_state = EDGE_NONE
+            if serial_edge_state != EDGE_NONE:
+                followup_edge_state = serial_edge_state
+
+            active_code_context = (mode == MODE_CODE) or (
+                code_phase != CODE_OUT and (not protected_scope) and mode not in (MODE_HTML, MODE_JSON, MODE_URL)
+            )
+            next_member_chain = CHAIN_NONE
+            if mode not in (MODE_URL, MODE_HTML, MODE_JSON) and is_dot and (not dot_in_abbrev) and (not is_space) and (not is_newline):
+                next_member_chain = CHAIN_AFTER_DOT
+            if active_code_context and opens_round:
+                next_member_chain = CHAIN_AFTER_CALL_OPEN
+            if active_code_context and opens_bracket:
+                next_member_chain = CHAIN_AFTER_INDEX_OPEN
+            if active_code_context and (closes_round or closes_bracket):
+                next_member_chain = CHAIN_AFTER_CLOSE
+            member_chain_state = next_member_chain
+
+            if is_bos or is_newline or is_semicolon:
+                key_value_side = KEYVAL_NONE
+            if mode == MODE_HTML and html_phase in (HTML_OUT, HTML_TAG_NAME, HTML_CLOSING):
+                key_value_side = KEYVAL_NONE
+            if html_phase == HTML_ATTR_NAME:
+                key_value_side = KEYVAL_KEY
+            if html_phase in (HTML_AFTER_EQUALS, HTML_QUOTED_ATTR):
+                key_value_side = KEYVAL_VALUE
+            if opens_json and opens_brace:
+                key_value_side = KEYVAL_KEY
+            if opens_json and opens_bracket:
+                key_value_side = KEYVAL_VALUE
+            if json_depth > 0 and json_container_top == JSON_CONTAINER_OBJECT and is_comma:
+                key_value_side = KEYVAL_KEY
+            if json_depth > 0 and json_container_top == JSON_CONTAINER_ARRAY and is_comma:
+                key_value_side = KEYVAL_VALUE
+            if json_depth > 0 and is_colon:
+                key_value_side = KEYVAL_VALUE
+            if active_code_context and key_value_side == KEYVAL_NONE and is_tokenish and not is_equals:
+                key_value_side = KEYVAL_KEY
+            if active_code_context and is_equals:
+                key_value_side = KEYVAL_VALUE
+            if json_depth == 0 and mode not in (MODE_HTML, MODE_CODE) and html_phase == HTML_OUT:
+                key_value_side = KEYVAL_NONE
+            plain_structured_context = mode in (MODE_PLAIN, MODE_MARKDOWN) and markdown_fence_state == 0 and quote_mode == QUOTE_NONE
+            if plain_structured_context and current_followup_edge in (EDGE_AFTER_COLON, EDGE_AFTER_EQUALS):
+                key_value_side = KEYVAL_VALUE
+
+            blank_line = is_newline and line_token_count == 0
+            if blank_line:
+                blank_line_run += 1
+            if is_newline and not blank_line:
+                blank_line_run = 0
+            if is_newline:
+                line_token_count = 0
+            elif is_tokenish and (not is_space) and (not is_newline):
+                line_token_count += 1
+            curr_indent_bucket = _len_bucket_scalar(indent_len)
+            line_content_start = line_like_start and is_tokenish and (not is_space) and (not is_newline)
+            if is_newline:
+                indent_delta = INDENT_DELTA_NONE
+            if line_content_start and curr_indent_bucket == last_indent_bucket:
+                indent_delta = INDENT_DELTA_SAME
+            if line_content_start and curr_indent_bucket > last_indent_bucket:
+                indent_delta = INDENT_DELTA_INDENT
+            if line_content_start and curr_indent_bucket < last_indent_bucket:
+                indent_delta = INDENT_DELTA_DEDENT
+            if line_content_start:
+                last_indent_bucket = curr_indent_bucket
+            if is_newline:
+                indent_len = 0
+            elif line_like_start and is_space:
+                indent_len += 1
+            if is_newline:
+                line_state = LINE_START
+            elif line_state == LINE_START and is_space:
+                line_state = LINE_AFTER_INDENT
+            elif is_word or ((not is_space) and (not is_newline)):
+                line_state = LINE_MID
+
+            scope_state = SCOPE_NONE
+            if url_phase != URL_OUT:
+                scope_state = SCOPE_URL
+            if mode == MODE_CODE and quote_mode != QUOTE_NONE:
+                scope_state = SCOPE_CODE_STRING
+            if markdown_fence_state > 0:
+                scope_state = SCOPE_MARKDOWN_CODE
+            if html_phase == HTML_QUOTED_ATTR:
+                scope_state = SCOPE_HTML_ATTR
+            if json_depth > 0 and quote_mode != QUOTE_NONE:
+                scope_state = SCOPE_JSON_STRING
+
+            if is_bos:
+                line_state = LINE_START
+                indent_len = 0
+                mode = MODE_PLAIN
+                html_phase = HTML_OUT
+                json_depth = 0
+                json_expect = JSON_OUT
+                url_phase = URL_OUT
+                markdown_phase = MARKDOWN_OUT
+                code_phase = CODE_OUT
+                quote_mode = QUOTE_NONE
+                scope_state = SCOPE_NONE
+                quote_len = 0
+                prose_state = PROSE_SENTENCE_START
+                sentence_len = 0
+                clause_len = 0
+                bracket_depth = 0
+                same_class_run = 0
+                prev_class = TOKEN_OTHER
+                followup_edge_state = EDGE_NONE
+                stack_top_type = STACK_NONE
+                stack_depth = 0
+                stack_parent_type = STACK_NONE
+                stack_slots = [STACK_NONE for _ in range(DEPTH_COUNT - 1)]
+                html_top_tag_class = TAG_OTHER
+                html_tag_depth = 0
+                json_container_top = JSON_CONTAINER_NONE
+                markdown_heading_level = 0
+                markdown_list_depth = 0
+                markdown_table_col = 0
+                markdown_fence_state = 0
+                last_indent_bucket = 0
+                indent_delta = INDENT_DELTA_NONE
+                blank_line_run = 0
+                line_token_count = 0
+                member_chain_state = CHAIN_NONE
+                key_value_side = KEYVAL_NONE
+                code_call_arg_count = 0
+                prose_clause_stack = PROSE_CLAUSE_NONE
+                serial_edge_state = EDGE_NONE
+                abbrev_state = ABBREV_NONE
+                current_followup_edge = EDGE_NONE
+                current_member_chain = CHAIN_NONE
+
+            features[pos, 0] = _len_bucket_scalar(indent_len)
+            features[pos, 1] = mode
+            features[pos, 2] = html_phase
+            features[pos, 3] = json_depth
+            features[pos, 4] = json_expect
+            features[pos, 5] = url_phase
+            features[pos, 6] = markdown_phase
+            features[pos, 7] = code_phase
+            features[pos, 8] = quote_mode
+            features[pos, 9] = scope_state
+            features[pos, 10] = _len_bucket_scalar(quote_len)
+            features[pos, 11] = prose_state
+            features[pos, 12] = _len_bucket_scalar(sentence_len)
+            features[pos, 13] = _len_bucket_scalar(clause_len)
+            features[pos, 14] = bracket_depth
+            features[pos, 15] = _run_bucket_scalar(same_class_run)
+            features[pos, 16] = current_followup_edge
+            features[pos, 17] = stack_top_type
+            features[pos, 18] = stack_depth
+            features[pos, 19] = stack_parent_type
+            features[pos, 20] = html_top_tag_class
+            features[pos, 21] = html_tag_depth
+            features[pos, 22] = json_container_top
+            features[pos, 23] = markdown_heading_level
+            features[pos, 24] = markdown_list_depth
+            features[pos, 25] = _len_bucket_scalar(markdown_table_col)
+            features[pos, 26] = markdown_fence_state
+            features[pos, 27] = indent_delta
+            features[pos, 28] = _run_bucket_scalar(blank_line_run)
+            features[pos, 29] = current_member_chain
+            features[pos, 30] = key_value_side
+            features[pos, 31] = _len_bucket_scalar(code_call_arg_count)
+            features[pos, 32] = prose_clause_stack
+            features[pos, 33] = serial_edge_state
+            features[pos, 34] = abbrev_state
+        return features
 
     def build_feature_ids(self, input_ids: Tensor) -> Tensor:
         ids = input_ids.long()
@@ -1022,42 +1559,41 @@ class GrammarStateEmbedding(nn.Module):
                 serial_edge_state = torch.where(is_bos, zero, serial_edge_state)
                 abbrev_state = torch.where(is_bos, zero, abbrev_state)
 
-            features[:, pos, 0] = line_state
-            features[:, pos, 1] = _len_bucket(indent_len)
-            features[:, pos, 2] = mode
-            features[:, pos, 3] = html_phase
-            features[:, pos, 4] = json_depth
-            features[:, pos, 5] = json_expect
-            features[:, pos, 6] = url_phase
-            features[:, pos, 7] = markdown_phase
-            features[:, pos, 8] = code_phase
-            features[:, pos, 9] = quote_mode
-            features[:, pos, 10] = scope_state
-            features[:, pos, 11] = _len_bucket(quote_len)
-            features[:, pos, 12] = prose_state
-            features[:, pos, 13] = _len_bucket(sentence_len)
-            features[:, pos, 14] = _len_bucket(clause_len)
-            features[:, pos, 15] = bracket_depth
-            features[:, pos, 16] = _run_bucket(same_class_run)
-            features[:, pos, 17] = current_followup_edge
-            features[:, pos, 18] = stack_top_type
-            features[:, pos, 19] = stack_depth
-            features[:, pos, 20] = stack_parent_type
-            features[:, pos, 21] = html_top_tag_class
-            features[:, pos, 22] = html_tag_depth
-            features[:, pos, 23] = json_container_top
-            features[:, pos, 24] = markdown_heading_level
-            features[:, pos, 25] = markdown_list_depth
-            features[:, pos, 26] = _len_bucket(markdown_table_col)
-            features[:, pos, 27] = markdown_fence_state
-            features[:, pos, 28] = indent_delta
-            features[:, pos, 29] = _run_bucket(blank_line_run)
-            features[:, pos, 30] = current_member_chain
-            features[:, pos, 31] = key_value_side
-            features[:, pos, 32] = _len_bucket(code_call_arg_count)
-            features[:, pos, 33] = prose_clause_stack
-            features[:, pos, 34] = serial_edge_state
-            features[:, pos, 35] = abbrev_state
+            features[:, pos, 0] = _len_bucket(indent_len)
+            features[:, pos, 1] = mode
+            features[:, pos, 2] = html_phase
+            features[:, pos, 3] = json_depth
+            features[:, pos, 4] = json_expect
+            features[:, pos, 5] = url_phase
+            features[:, pos, 6] = markdown_phase
+            features[:, pos, 7] = code_phase
+            features[:, pos, 8] = quote_mode
+            features[:, pos, 9] = scope_state
+            features[:, pos, 10] = _len_bucket(quote_len)
+            features[:, pos, 11] = prose_state
+            features[:, pos, 12] = _len_bucket(sentence_len)
+            features[:, pos, 13] = _len_bucket(clause_len)
+            features[:, pos, 14] = bracket_depth
+            features[:, pos, 15] = _run_bucket(same_class_run)
+            features[:, pos, 16] = current_followup_edge
+            features[:, pos, 17] = stack_top_type
+            features[:, pos, 18] = stack_depth
+            features[:, pos, 19] = stack_parent_type
+            features[:, pos, 20] = html_top_tag_class
+            features[:, pos, 21] = html_tag_depth
+            features[:, pos, 22] = json_container_top
+            features[:, pos, 23] = markdown_heading_level
+            features[:, pos, 24] = markdown_list_depth
+            features[:, pos, 25] = _len_bucket(markdown_table_col)
+            features[:, pos, 26] = markdown_fence_state
+            features[:, pos, 27] = indent_delta
+            features[:, pos, 28] = _run_bucket(blank_line_run)
+            features[:, pos, 29] = current_member_chain
+            features[:, pos, 30] = key_value_side
+            features[:, pos, 31] = _len_bucket(code_call_arg_count)
+            features[:, pos, 32] = prose_clause_stack
+            features[:, pos, 33] = serial_edge_state
+            features[:, pos, 34] = abbrev_state
         return features
 
     def embed_feature_ids(self, feature_ids: Tensor) -> Tensor:

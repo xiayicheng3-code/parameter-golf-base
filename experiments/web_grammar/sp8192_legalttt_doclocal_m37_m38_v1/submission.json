@@ -1,0 +1,7 @@
+{
+  "name": "sp8192_legalttt_doclocal_m37_m38_v1",
+  "status": "grafted_experiment",
+  "track": "non_record_experiment",
+  "base_record": "records/track_10min_16mb/2026-04-09_SP8192_3LayerRecur_ParResid_QK525_LegalTTT",
+  "notes": "Data-only graft of the April 9 legal SP8192 SOTA that isolates M37 and M38: document-local BOS-aware windows plus deterministic two-phase long-document coverage. Grammar adapters, grammar feature workers, and early local-attention patches are intentionally removed from this variant. Document-local TTT is not ported yet."
+}
