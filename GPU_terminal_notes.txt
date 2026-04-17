@@ -1,11 +1,26 @@
 Cloud GPU terminal notes
 
-Yes: terminal-only is enough.
-No: you do not need Git to download logs or model files.
-
-Git is useful for syncing code to the pod, but artifact transfer is usually better done with `scp`, `rsync`, or `sftp` over SSH.
-
 Paste this on the pod after SSH login. Always use a pod in NA.
+
+Before every cloud run:
+
+- Local first: `git status`
+- If there are experiment changes, commit and push them before touching the pod.
+- On the pod, always `git pull --ff-only` before starting training.
+- If the run targets an experiment subdirectory, `cd` into that directory and launch that script explicitly.
+- If you forget to commit/push locally, the pod will not have the latest experiment files.
+
+Recommended local sync flow:
+
+```bash
+cd /Users/yichengxia/ML_NN_DA/parameter_golf/parameter-golf-base
+git status
+git add -A
+git commit -m "your message"
+git push
+```
+
+Recommended pod sync flow:
 
 ```bash
 cd /workspace
@@ -36,9 +51,28 @@ ls -lh "$ART_DIR"
 ls -lh "/workspace/${RUN_ID}_artifacts.tar.gz"
 ```
 
+For experiment runs, launch the experiment script instead of the repo-root `train_gpt.py`. Example:
+
+```bash
+cd /workspace/parameter-golf-base/experiments/web_grammar/sp8192_legalttt_doclocal_m37_m38_v1
+mkdir -p logs
+
+DATA_DIR=/workspace/parameter-golf-base/data \
+ATTN_BACKEND=fa3 \
+RUN_ID=sp8192_m37m38_h100x1_seed42 \
+SEED=42 \
+QK_GAIN_INIT=5.25 \
+DOC_LOCAL_WINDOWS=1 \
+TRAIN_CONTEXT_BURNIN=64 \
+TTT_ENABLED=0 \
+TRAIN_LOG_EVERY=25 \
+VAL_LOSS_EVERY=250 \
+MAX_WALLCLOCK_SECONDS=600 \
+torchrun --standalone --nproc_per_node=1 train_gpt.py | tee logs/sp8192_m37m38_h100x1_seed42.txt
+```
+
 For the baseline `train_gpt.py`, the important output files are:
 
 - `train.log`
 - `final_model.pt`
 - `final_model.int8.ptz`
-

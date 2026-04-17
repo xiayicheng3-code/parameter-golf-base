@@ -11,7 +11,7 @@ Everything grammar-related from the previous graft is intentionally removed here
 
 - `records/track_10min_16mb/2026-04-09_SP8192_3LayerRecur_ParResid_QK525_LegalTTT`
 
-`record_base.py` is copied locally so the run stays self-contained. `train_gpt.py` only patches the loader/eval path.
+`train_gpt.py` is now a single self-contained script that folds the April 9 legal SP8192 SOTA base together with the M37/M38 doc-local patch layer.
 
 ## What Changed
 
@@ -20,11 +20,11 @@ Everything grammar-related from the previous graft is intentionally removed here
 - Long documents alternate between left-packed and right-packed non-overlapping windows across passes.
 - Non-BOS training windows mask their first `64` target positions by default so the model is not penalized for predicting from an artificially context-truncated opening.
 - Eval uses document-local rolling coverage with overlap masking, so each target token is scored exactly once.
-- Document-local TTT is still disabled here.
+- Optional document-local TTT now groups full documents into variable-size eval chunks, allows oversize chunks for very long documents, and drops any final remainder below one full global train batch.
 
 ## Defaults
 
-- `DOC_LOCAL_WINDOWS=1`
+- Document-local windows are always enabled in this script.
 - `SHUFFLE_DOCS=1`
 - `TRAIN_CONTEXT_BURNIN=64`
 - `TTT_ENABLED=0`
@@ -41,13 +41,20 @@ Optional smoke knobs:
 ```bash
 RUN_ID=sp8192_m37_m38_smoke \
 TTT_ENABLED=0 \
-DOC_LOCAL_WINDOWS=1 \
+TRAIN_CONTEXT_BURNIN=64 \
+torchrun --standalone --nproc_per_node=8 train_gpt.py
+```
+
+TTT run:
+
+```bash
+RUN_ID=sp8192_m37_m38_ttt \
+TTT_ENABLED=1 \
 TRAIN_CONTEXT_BURNIN=64 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
 ## Files
 
-- `train_gpt.py`: minimal M37/M38 patch layer
-- `record_base.py`: copied April 9 legal SOTA base
+- `train_gpt.py`: self-contained April 9 legal SP8192 base plus the M37/M38 doc-local graft
 - `submission.json`: experiment metadata
