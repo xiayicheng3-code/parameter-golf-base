@@ -996,6 +996,12 @@ def eval_val_ttt(h, device, val_data, base_model, batch_seqs=32):
             for bi in range(0, len(my_score_refs), batch_seqs):
                 batch_refs = my_score_refs[bi : bi + batch_seqs]
                 x_np, y_np = pack_score_batch(batch_refs, store, doc_spans, h.eval_seq_len, h._pad_id)
+                if len(batch_refs) != batch_seqs:
+                    x_pad = np.full((batch_seqs, h.eval_seq_len), h._pad_id, dtype=np.int64)
+                    y_pad = np.full((batch_seqs, h.eval_seq_len), IGNORE_INDEX, dtype=np.int64)
+                    x_pad[: len(batch_refs)] = x_np
+                    y_pad[: len(batch_refs)] = y_np
+                    x_np, y_np = x_pad, y_pad
                 x = torch.from_numpy(x_np).to(device=device, dtype=torch.int64, non_blocking=True)
                 y = torch.from_numpy(y_np).to(device=device, dtype=torch.int64, non_blocking=True)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
