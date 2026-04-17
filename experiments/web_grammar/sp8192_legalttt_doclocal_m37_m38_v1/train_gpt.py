@@ -340,7 +340,12 @@ def train_model(h,device,val_data):
 		reached_cap=max_wallclock_ms is not None and approx_training_time_ms>=max_wallclock_ms
 		if h.distributed and max_wallclock_ms is not None:reached_cap_tensor=torch.tensor(int(reached_cap),device=device);dist.all_reduce(reached_cap_tensor,op=dist.ReduceOp.MAX);reached_cap=bool(reached_cap_tensor.item())
 		if stop_after_step is None and reached_cap:stop_after_step=step
-		log(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB");log('ema:applying EMA weights');current_state=base_model.state_dict();avg_state={name:t.to(dtype=current_state[name].dtype)for(name,t)in ema_state.items()};base_model.load_state_dict(avg_state,strict=True);return base_model,compiled_model
+	log(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB")
+	log('ema:applying EMA weights')
+	current_state=base_model.state_dict()
+	avg_state={name:t.to(dtype=current_state[name].dtype)for(name,t)in ema_state.items()}
+	base_model.load_state_dict(avg_state,strict=True)
+	return base_model,compiled_model
 def main():
 	world_size=int(os.environ.get('WORLD_SIZE','1'));local_rank=int(os.environ.get('LOCAL_RANK','0'));distributed='RANK'in os.environ and'WORLD_SIZE'in os.environ
 	if not torch.cuda.is_available():raise RuntimeError('CUDA is required')
@@ -354,7 +359,12 @@ def main():
 		os.makedirs('logs',exist_ok=True);log(100*'=',console=False);log('Hyperparameters:',console=True)
 		for(k,v)in sorted(vars(type(h)).items()):
 			if not k.startswith('_'):log(f"  {k}: {v}",console=True)
-		log('='*100,console=False);log(f"Running Python {sys.version}",console=False);log(f"Running PyTorch {torch.__version__}",console=False);log("attention_backend: fa3",console=True);log(subprocess.run(['nvidia-smi'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,check=False).stdout,console=False);log('='*100,console=False)
+		log('='*100,console=False)
+		log(f"Running Python {sys.version}",console=False)
+		log(f"Running PyTorch {torch.__version__}",console=False)
+		log("attention_backend: fa3",console=True)
+		log(subprocess.run(['nvidia-smi'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,check=False).stdout,console=False)
+		log('='*100,console=False)
 	train_and_eval(h,device)
 	if distributed:dist.destroy_process_group()
 
