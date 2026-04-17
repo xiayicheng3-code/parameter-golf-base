@@ -354,7 +354,7 @@ def main():
 		os.makedirs('logs',exist_ok=True);log(100*'=',console=False);log('Hyperparameters:',console=True)
 		for(k,v)in sorted(vars(type(h)).items()):
 			if not k.startswith('_'):log(f"  {k}: {v}",console=True)
-			log('='*100,console=False);log(f"Running Python {sys.version}",console=False);log(f"Running PyTorch {torch.__version__}",console=False);log("attention_backend: fa3",console=True);log(subprocess.run(['nvidia-smi'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,check=False).stdout,console=False);log('='*100,console=False)
+		log('='*100,console=False);log(f"Running Python {sys.version}",console=False);log(f"Running PyTorch {torch.__version__}",console=False);log("attention_backend: fa3",console=True);log(subprocess.run(['nvidia-smi'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,check=False).stdout,console=False);log('='*100,console=False)
 	train_and_eval(h,device)
 	if distributed:dist.destroy_process_group()
 
