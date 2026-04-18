@@ -11,7 +11,7 @@ try:
 	from flash_attn_interface import flash_attn_func as flash_attn_3_func
 except Exception:
 	flash_attn_3_func=None
-class Hyperparameters:data_dir=os.environ.get('DATA_DIR','./data/');seed=int(os.environ.get('SEED',1337));run_id=os.environ.get('RUN_ID',str(uuid.uuid4()));iterations=int(os.environ.get('ITERATIONS',20000));warmdown_frac=float(os.environ.get('WARMDOWN_FRAC',.72));warmup_steps=int(os.environ.get('WARMUP_STEPS',20));train_batch_tokens=int(os.environ.get('TRAIN_BATCH_TOKENS',786432));train_seq_len=int(os.environ.get('TRAIN_SEQ_LEN',2048));train_log_every=int(os.environ.get('TRAIN_LOG_EVERY',500));max_wallclock_seconds=float(os.environ.get('MAX_WALLCLOCK_SECONDS',6e2));val_batch_tokens=int(os.environ.get('VAL_BATCH_TOKENS',524288));eval_seq_len=int(os.environ.get('EVAL_SEQ_LEN',2048));val_loss_every=int(os.environ.get('VAL_LOSS_EVERY',4000));sliding_window_enabled=bool(int(os.environ.get('SLIDING_WINDOW_ENABLED','1')));vocab_size=int(os.environ.get('VOCAB_SIZE',8192));num_layers=int(os.environ.get('NUM_LAYERS',11));xsa_last_n=int(os.environ.get('XSA_LAST_N',11));model_dim=int(os.environ.get('MODEL_DIM',512));embedding_dim=int(os.environ.get('EMBEDDING_DIM',512));num_kv_heads=int(os.environ.get('NUM_KV_HEADS',4));num_heads=int(os.environ.get('NUM_HEADS',8));attn_head_dim=int(os.environ.get('ATTN_HEAD_DIM','0'));mlp_mult=float(os.environ.get('MLP_MULT',4.));skip_gates_enabled=bool(int(os.environ.get('SKIP_GATES_ENABLED','1')));tie_embeddings=bool(int(os.environ.get('TIE_EMBEDDINGS','1')));logit_softcap=float(os.environ.get('LOGIT_SOFTCAP',3e1));rope_base=float(os.environ.get('ROPE_BASE',1e4));rope_dims=int(os.environ.get('ROPE_DIMS',16));rope_train_seq_len=int(os.environ.get('ROPE_TRAIN_SEQ_LEN',2048));ln_scale=bool(int(os.environ.get('LN_SCALE','1')));qk_gain_init=float(os.environ.get('QK_GAIN_INIT',5.));num_loops=int(os.environ.get('NUM_LOOPS',2));loop_start=int(os.environ.get('LOOP_START',3));loop_end=int(os.environ.get('LOOP_END',5));enable_looping_at=float(os.environ.get('ENABLE_LOOPING_AT',.35));parallel_residual_start=int(os.environ.get('PARALLEL_RESIDUAL_START',7));min_lr=float(os.environ.get('MIN_LR',.0));embed_lr=float(os.environ.get('EMBED_LR',.6));head_lr=float(os.environ.get('HEAD_LR',.008));tied_embed_lr=float(os.environ.get('TIED_EMBED_LR',.03));tied_embed_init_std=float(os.environ.get('TIED_EMBED_INIT_STD',.005));matrix_lr=float(os.environ.get('MATRIX_LR',.022));scalar_lr=float(os.environ.get('SCALAR_LR',.02));muon_momentum=float(os.environ.get('MUON_MOMENTUM',.99));muon_backend_steps=int(os.environ.get('MUON_BACKEND_STEPS',5));muon_momentum_warmup_start=float(os.environ.get('MUON_MOMENTUM_WARMUP_START',.92));muon_momentum_warmup_steps=int(os.environ.get('MUON_MOMENTUM_WARMUP_STEPS',1500));muon_row_normalize=bool(int(os.environ.get('MUON_ROW_NORMALIZE','1')));beta1=float(os.environ.get('BETA1',.9));beta2=float(os.environ.get('BETA2',.95));adam_eps=float(os.environ.get('ADAM_EPS',1e-08));grad_clip_norm=float(os.environ.get('GRAD_CLIP_NORM',.3));eval_stride=int(os.environ.get('EVAL_STRIDE',64));muon_beta2=float(os.environ.get('MUON_BETA2',.95));adam_wd=float(os.environ.get('ADAM_WD',.02));muon_wd=float(os.environ.get('MUON_WD',.095));embed_wd=float(os.environ.get('EMBED_WD',.085));ema_decay=float(os.environ.get('EMA_DECAY',.9965));ttt_enabled=bool(int(os.environ.get('TTT_ENABLED','0')));ttt_lr=float(os.environ.get('TTT_LR',.005));ttt_epochs=int(os.environ.get('TTT_EPOCHS',3));ttt_momentum=float(os.environ.get('TTT_MOMENTUM',.9));ttt_chunk_tokens=int(os.environ.get('TTT_CHUNK_TOKENS',32768));compressor=os.environ.get('COMPRESSOR','brotli');gptq_calibration_batches=int(os.environ.get('GPTQ_CALIBRATION_BATCHES',64));gptq_reserve_seconds=float(os.environ.get('GPTQ_RESERVE_SECONDS',12.));matrix_bits=int(os.environ.get('MATRIX_BITS',6));embed_bits=int(os.environ.get('EMBED_BITS',8));matrix_clip_sigmas=float(os.environ.get('MATRIX_CLIP_SIGMAS',12.85));embed_clip_sigmas=float(os.environ.get('EMBED_CLIP_SIGMAS',2e1));distributed='RANK'in os.environ and'WORLD_SIZE'in os.environ;rank=int(os.environ.get('RANK','0'));world_size=int(os.environ.get('WORLD_SIZE','1'));local_rank=int(os.environ.get('LOCAL_RANK','0'));is_main_process=rank==0;grad_accum_steps=8//world_size;datasets_dir=os.path.join(data_dir,'datasets',f"fineweb10B_sp{vocab_size}");train_files=os.path.join(datasets_dir,'fineweb_train_*.bin');val_files=os.path.join(datasets_dir,'fineweb_val_*.bin');tokenizer_path=os.path.join(data_dir,'tokenizers',f"fineweb_{vocab_size}_bpe.model");logfile=f"logs/{run_id}.txt";model_path='final_model.pt';quantized_model_path='final_model.int6.ptz'
+class Hyperparameters:data_dir=os.environ.get('DATA_DIR','./data/');seed=int(os.environ.get('SEED',1337));run_id=os.environ.get('RUN_ID',str(uuid.uuid4()));iterations=int(os.environ.get('ITERATIONS',20000));warmdown_frac=float(os.environ.get('WARMDOWN_FRAC',.72));warmup_steps=int(os.environ.get('WARMUP_STEPS',20));train_batch_tokens=int(os.environ.get('TRAIN_BATCH_TOKENS',786432));train_seq_len=int(os.environ.get('TRAIN_SEQ_LEN',1024));train_log_every=int(os.environ.get('TRAIN_LOG_EVERY',500));max_wallclock_seconds=float(os.environ.get('MAX_WALLCLOCK_SECONDS',6e2));val_batch_tokens=int(os.environ.get('VAL_BATCH_TOKENS',524288));eval_seq_len=int(os.environ.get('EVAL_SEQ_LEN',1024));val_loss_every=int(os.environ.get('VAL_LOSS_EVERY',4000));sliding_window_enabled=bool(int(os.environ.get('SLIDING_WINDOW_ENABLED','1')));vocab_size=int(os.environ.get('VOCAB_SIZE',8192));num_layers=int(os.environ.get('NUM_LAYERS',11));xsa_last_n=int(os.environ.get('XSA_LAST_N',11));model_dim=int(os.environ.get('MODEL_DIM',512));embedding_dim=int(os.environ.get('EMBEDDING_DIM',512));num_kv_heads=int(os.environ.get('NUM_KV_HEADS',4));num_heads=int(os.environ.get('NUM_HEADS',8));attn_head_dim=int(os.environ.get('ATTN_HEAD_DIM','0'));mlp_mult=float(os.environ.get('MLP_MULT',4.));skip_gates_enabled=bool(int(os.environ.get('SKIP_GATES_ENABLED','1')));tie_embeddings=bool(int(os.environ.get('TIE_EMBEDDINGS','1')));logit_softcap=float(os.environ.get('LOGIT_SOFTCAP',3e1));rope_base=float(os.environ.get('ROPE_BASE',1e4));rope_dims=int(os.environ.get('ROPE_DIMS',16));rope_train_seq_len=int(os.environ.get('ROPE_TRAIN_SEQ_LEN',1024));ln_scale=bool(int(os.environ.get('LN_SCALE','1')));qk_gain_init=float(os.environ.get('QK_GAIN_INIT',5.));num_loops=int(os.environ.get('NUM_LOOPS',2));loop_start=int(os.environ.get('LOOP_START',3));loop_end=int(os.environ.get('LOOP_END',5));enable_looping_at=float(os.environ.get('ENABLE_LOOPING_AT',.35));parallel_residual_start=int(os.environ.get('PARALLEL_RESIDUAL_START',7));min_lr=float(os.environ.get('MIN_LR',.0));embed_lr=float(os.environ.get('EMBED_LR',.6));head_lr=float(os.environ.get('HEAD_LR',.008));tied_embed_lr=float(os.environ.get('TIED_EMBED_LR',.03));tied_embed_init_std=float(os.environ.get('TIED_EMBED_INIT_STD',.005));matrix_lr=float(os.environ.get('MATRIX_LR',.022));scalar_lr=float(os.environ.get('SCALAR_LR',.02));muon_momentum=float(os.environ.get('MUON_MOMENTUM',.99));muon_backend_steps=int(os.environ.get('MUON_BACKEND_STEPS',5));muon_momentum_warmup_start=float(os.environ.get('MUON_MOMENTUM_WARMUP_START',.92));muon_momentum_warmup_steps=int(os.environ.get('MUON_MOMENTUM_WARMUP_STEPS',1500));muon_row_normalize=bool(int(os.environ.get('MUON_ROW_NORMALIZE','1')));beta1=float(os.environ.get('BETA1',.9));beta2=float(os.environ.get('BETA2',.95));adam_eps=float(os.environ.get('ADAM_EPS',1e-08));grad_clip_norm=float(os.environ.get('GRAD_CLIP_NORM',.3));eval_stride=int(os.environ.get('EVAL_STRIDE',64));muon_beta2=float(os.environ.get('MUON_BETA2',.95));adam_wd=float(os.environ.get('ADAM_WD',.02));muon_wd=float(os.environ.get('MUON_WD',.095));embed_wd=float(os.environ.get('EMBED_WD',.085));ema_decay=float(os.environ.get('EMA_DECAY',.9965));ttt_enabled=bool(int(os.environ.get('TTT_ENABLED','0')));ttt_lr=float(os.environ.get('TTT_LR',.005));ttt_epochs=int(os.environ.get('TTT_EPOCHS',3));ttt_momentum=float(os.environ.get('TTT_MOMENTUM',.9));ttt_chunk_tokens=int(os.environ.get('TTT_CHUNK_TOKENS',32768));compressor=os.environ.get('COMPRESSOR','brotli');gptq_calibration_batches=int(os.environ.get('GPTQ_CALIBRATION_BATCHES',64));gptq_reserve_seconds=float(os.environ.get('GPTQ_RESERVE_SECONDS',12.));matrix_bits=int(os.environ.get('MATRIX_BITS',6));embed_bits=int(os.environ.get('EMBED_BITS',8));matrix_clip_sigmas=float(os.environ.get('MATRIX_CLIP_SIGMAS',12.85));embed_clip_sigmas=float(os.environ.get('EMBED_CLIP_SIGMAS',2e1));distributed='RANK'in os.environ and'WORLD_SIZE'in os.environ;rank=int(os.environ.get('RANK','0'));world_size=int(os.environ.get('WORLD_SIZE','1'));local_rank=int(os.environ.get('LOCAL_RANK','0'));is_main_process=rank==0;grad_accum_steps=8//world_size;datasets_dir=os.path.join(data_dir,'datasets',f"fineweb10B_sp{vocab_size}");train_files=os.path.join(datasets_dir,'fineweb_train_*.bin');val_files=os.path.join(datasets_dir,'fineweb_val_*.bin');tokenizer_path=os.path.join(data_dir,'tokenizers',f"fineweb_{vocab_size}_bpe.model");logfile=f"logs/{run_id}.txt";model_path='final_model.pt';quantized_model_path='final_model.int6.ptz'
 _logger_hparams=None
 def set_logging_hparams(h):global _logger_hparams;_logger_hparams=h
 def log(msg,console=True):
@@ -385,7 +385,7 @@ def env_bool(name: str, default: bool) -> bool:
 
 
 Hyperparameters.shuffle_docs = env_bool("SHUFFLE_DOCS", True)
-Hyperparameters.train_context_burnin = int(os.environ.get("TRAIN_CONTEXT_BURNIN", "64"))
+Hyperparameters.train_context_burnin = int(os.environ.get("TRAIN_CONTEXT_BURNIN", "32"))
 Hyperparameters.train_token_limit = int(os.environ.get("TRAIN_TOKEN_LIMIT", "0"))
 Hyperparameters.val_token_limit = int(os.environ.get("VAL_TOKEN_LIMIT", "0"))
 Hyperparameters.train_doc_limit = int(os.environ.get("TRAIN_DOC_LIMIT", "0"))
@@ -812,9 +812,15 @@ class ShuffledSequenceLoader:
         self.doc_spans = list(h._train_doc_spans)
         self.next_cycle = 0
         self.current_cycle = 0
-        self.doc_order = np.empty((0,), dtype=np.int64)
-        self.doc_cursor = 0
-        self.current_doc_idx = -1
+        self.short_doc_order = np.empty((0,), dtype=np.int64)
+        self.long_doc_order = np.empty((0,), dtype=np.int64)
+        self.short_doc_cursor = 0
+        self.long_doc_cursor = 0
+        self.short_token_budget = 0
+        self.long_token_budget = 0
+        self.short_emitted_tokens = 0
+        self.long_emitted_tokens = 0
+        self.current_long_doc_idx = -1
         self.current_window_specs: list[tuple[int, int]] = []
         self.current_window_cursor = 0
         self.cached_doc_idx = -1
@@ -824,12 +830,23 @@ class ShuffledSequenceLoader:
     def _start_new_cycle(self) -> None:
         self.current_cycle = self.next_cycle
         self.next_cycle += 1
-        self.doc_order = np.arange(len(self.doc_spans), dtype=np.int64)
-        if self.shuffle_docs and self.doc_order.size > 1:
+        short_doc_indices = [idx for idx, span in enumerate(self.doc_spans) if span.pred_len < self.seq_len]
+        long_doc_indices = [idx for idx, span in enumerate(self.doc_spans) if span.pred_len >= self.seq_len]
+        self.short_doc_order = np.asarray(short_doc_indices, dtype=np.int64)
+        self.long_doc_order = np.asarray(long_doc_indices, dtype=np.int64)
+        if self.shuffle_docs and (self.short_doc_order.size > 1 or self.long_doc_order.size > 1):
             rng = np.random.default_rng(self.seed + 7919 * self.current_cycle)
-            rng.shuffle(self.doc_order)
-        self.doc_cursor = 0
-        self.current_doc_idx = -1
+            if self.short_doc_order.size > 1:
+                rng.shuffle(self.short_doc_order)
+            if self.long_doc_order.size > 1:
+                rng.shuffle(self.long_doc_order)
+        self.short_doc_cursor = 0
+        self.long_doc_cursor = 0
+        self.short_token_budget = sum(self.doc_spans[int(idx)].pred_len for idx in self.short_doc_order.tolist())
+        self.long_token_budget = sum(self.doc_spans[int(idx)].pred_len for idx in self.long_doc_order.tolist())
+        self.short_emitted_tokens = 0
+        self.long_emitted_tokens = 0
+        self.current_long_doc_idx = -1
         self.current_window_specs = []
         self.current_window_cursor = 0
 
@@ -840,12 +857,32 @@ class ShuffledSequenceLoader:
             self.cached_doc_idx = doc_idx
         return self.cached_doc_tokens
 
-    def _advance_doc(self) -> None:
+    def _has_short_docs(self) -> bool:
+        return self.short_doc_cursor < self.short_doc_order.size
+
+    def _has_long_docs(self) -> bool:
+        return self.current_window_cursor < len(self.current_window_specs) or self.long_doc_cursor < self.long_doc_order.size
+
+    def _prefer_short_docs(self) -> bool:
+        if not self._has_short_docs():
+            return False
+        if not self._has_long_docs():
+            return True
+        short_ratio = self.short_emitted_tokens / max(self.short_token_budget, 1)
+        long_ratio = self.long_emitted_tokens / max(self.long_token_budget, 1)
+        return short_ratio <= long_ratio
+
+    def _prepare_long_doc(self) -> bool:
+        if self.current_window_cursor < len(self.current_window_specs):
+            return True
         while True:
-            if self.doc_cursor >= self.doc_order.size:
-                self._start_new_cycle()
-            doc_idx = int(self.doc_order[self.doc_cursor])
-            self.doc_cursor += 1
+            if self.long_doc_cursor >= self.long_doc_order.size:
+                self.current_long_doc_idx = -1
+                self.current_window_specs = []
+                self.current_window_cursor = 0
+                return False
+            doc_idx = int(self.long_doc_order[self.long_doc_cursor])
+            self.long_doc_cursor += 1
             span = self.doc_spans[doc_idx]
             window_specs = [
                 (start, min(self.seq_len, span.pred_len - start))
@@ -853,18 +890,52 @@ class ShuffledSequenceLoader:
                 if span.pred_len - start > 0
             ]
             if window_specs:
-                self.current_doc_idx = doc_idx
+                self.current_long_doc_idx = doc_idx
                 self.current_window_specs = window_specs
                 self.current_window_cursor = 0
-                return
+                return True
 
-    def _next_window(self) -> tuple[np.ndarray, np.ndarray]:
-        if self.current_window_cursor >= len(self.current_window_specs):
-            self._advance_doc()
+    def _next_long_window(self) -> tuple[np.ndarray, np.ndarray]:
+        if not self._prepare_long_doc():
+            raise RuntimeError("No long-document windows available")
         start, valid_len = self.current_window_specs[self.current_window_cursor]
         self.current_window_cursor += 1
-        doc_tokens = self._doc_tokens(self.current_doc_idx)
+        doc_tokens = self._doc_tokens(self.current_long_doc_idx)
+        self.long_emitted_tokens += valid_len
         return pack_train_window(doc_tokens, start, valid_len, self.seq_len, self.pad_id, self.train_context_burnin)
+
+    def _next_short_pack(self) -> tuple[np.ndarray, np.ndarray] | None:
+        x = np.full((self.seq_len,), self.pad_id, dtype=np.int64)
+        y = np.full((self.seq_len,), IGNORE_INDEX, dtype=np.int64)
+        filled = 0
+        while filled < self.seq_len:
+            if self.short_doc_cursor >= self.short_doc_order.size:
+                return None if filled == 0 else None
+            doc_idx = int(self.short_doc_order[self.short_doc_cursor])
+            self.short_doc_cursor += 1
+            span = self.doc_spans[doc_idx]
+            doc_tokens = self._doc_tokens(doc_idx)
+            pred_len = span.pred_len
+            if pred_len <= 0:
+                continue
+            take = min(pred_len, self.seq_len - filled)
+            x[filled : filled + take] = doc_tokens[:take].astype(np.int64, copy=False)
+            y[filled : filled + take] = doc_tokens[1 : 1 + take].astype(np.int64, copy=False)
+            filled += take
+        self.short_emitted_tokens += filled
+        return x, y
+
+    def _next_window(self) -> tuple[np.ndarray, np.ndarray]:
+        while True:
+            if not self._has_short_docs() and not self._has_long_docs():
+                self._start_new_cycle()
+            if self._prefer_short_docs():
+                packed = self._next_short_pack()
+                if packed is not None:
+                    return packed
+            if self._has_long_docs():
+                return self._next_long_window()
+            self._start_new_cycle()
 
     def next_batch(self, global_tokens, grad_accum_steps):
         device_tokens = global_tokens // (self.h.world_size * grad_accum_steps)
