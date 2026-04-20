@@ -516,15 +516,28 @@ def gptq_quantize_weight(w,H,clip_sigmas=3.,clip_range=63,block_size=128):
 		if i2<cols:W_work[:,i2:]-=Err@Hinv[i1:i2,i2:]
 	return Q[:,invperm],s
 def gptq_mixed_quantize(state_dict,hessians,h):
-	result={};meta={}
+	result={}
+	meta={}
 	for(name,tensor)in state_dict.items():
 		t=tensor.detach().cpu().contiguous()
-		if not t.is_floating_point()or t.numel()<=65536:result[name]=t.to(torch.float16)if t.is_floating_point()else t;meta[name]='passthrough (float16)';continue
-		cs=h.embed_clip_sigmas if'tok_emb'in name else h.matrix_clip_sigmas;bits=h.embed_bits if'tok_emb'in name else h.matrix_bits;q,s=gptq_quantize_weight(t,hessians[name],clip_sigmas=cs,clip_range=2**(bits-1)-1);result[name+'.q']=q;result[name+'.scale']=s;meta[name]=f"gptq (int{bits})"
+		if not t.is_floating_point()or t.numel()<=65536:
+			result[name]=t.to(torch.float16)if t.is_floating_point()else t
+			meta[name]='passthrough (float16)'
+			continue
+		cs=h.embed_clip_sigmas if'tok_emb'in name else h.matrix_clip_sigmas
+		bits=h.embed_bits if'tok_emb'in name else h.matrix_bits
+		q,s=gptq_quantize_weight(t,hessians[name],clip_sigmas=cs,clip_range=2**(bits-1)-1)
+		result[name+'.q']=q
+		result[name+'.scale']=s
+		meta[name]=f"gptq (int{bits})"
 	categories=collections.defaultdict(set)
-	for(name,cat)in meta.items():short=re.sub('\\.\\d+$','',re.sub('blocks\\.\\d+','blocks',name));categories[cat].add(short)
+	for(name,cat)in meta.items():
+		short=re.sub('\\.\\d+$','',re.sub('blocks\\.\\d+','blocks',name))
+		categories[cat].add(short)
 	log('Quantized weights:')
-	for cat in sorted(categories):log(f"  {cat}: {", ".join(sorted(categories[cat]))}")
+	for cat in sorted(categories):
+		members=", ".join(sorted(categories[cat]))
+		log(f"  {cat}: {members}")
 	return result,meta
 def dequantize_mixed(result,meta,template_sd):
 	out={}
