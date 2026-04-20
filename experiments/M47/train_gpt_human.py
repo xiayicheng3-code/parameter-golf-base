@@ -64,7 +64,7 @@ class Hyperparameters:
 	embed_wd=float(os.environ.get('EMBED_WD',.085))
 	ema_decay=float(os.environ.get('EMA_DECAY',.9965))
 	self_distill_enabled=bool(int(os.environ.get('SELF_DISTILL_ENABLED','1')))
-	self_distill_mode=os.environ.get('SELF_DISTILL_MODE','full_residual')
+	self_distill_mode=os.environ.get('SELF_DISTILL_MODE','block_io')
 	self_distill_weight=float(os.environ.get('SELF_DISTILL_WEIGHT',.05))
 	self_distill_start_frac=float(os.environ.get('SELF_DISTILL_START_FRAC',.70))
 	self_distill_end_frac=float(os.environ.get('SELF_DISTILL_END_FRAC',.90))
@@ -125,11 +125,12 @@ def parse_distill_positions(spec, total_positions, mode, env_name):
 	if not spec:
 		return tuple()
 	positions = tuple(sorted({int(part.strip()) for part in spec.split(',') if part.strip()}))
+	min_pos = 0 if mode == 'block_io' else 1
 	for pos in positions:
-		if pos <= 0 or pos >= total_positions:
+		if pos < min_pos or pos >= total_positions:
 			raise ValueError(
-				f"{env_name} entries must be in [1,{total_positions-1}] "
-				f"for adjacent supervision, got {pos}"
+				f"{env_name} entries must be in [{min_pos},{total_positions-1}] "
+				f"for mode={mode}, got {pos}"
 			)
 	return positions
 class ValidationData:
@@ -256,7 +257,7 @@ class GPT(nn.Module):
 		self.looping_active = False
 		self.self_distill_enabled = h.self_distill_enabled
 		self.self_distill_mode = h.self_distill_mode
-		if self.self_distill_enabled and self.self_distill_mode not in ('full_residual', 'two_step_delta'):
+		if self.self_distill_enabled and self.self_distill_mode not in ('full_residual', 'two_step_delta', 'block_io'):
 			raise ValueError(f"Unsupported SELF_DISTILL_MODE={self.self_distill_mode!r}")
 		if h.num_loops>0:
 			loop_seg=list(range(h.loop_start,h.loop_end+1));all_indices=list(range(h.loop_start))
@@ -322,6 +323,8 @@ class GPT(nn.Module):
 			elif self.self_distill_mode == 'two_step_delta':
 				watch_positions.add(pos - 1)
 				watch_positions.add(pos)
+			elif self.self_distill_mode == 'block_io':
+				watch_positions.add(pos)
 
 		lower_cache = [None] * len(distill_positions)
 		delta_cache = [None] * len(distill_positions)
@@ -344,7 +347,7 @@ class GPT(nn.Module):
 			nonlocal exec_pos
 			exec_pos += 1
 			need_stats = exec_pos in watch_positions
-			x_out, _, delta = self.blocks[block_idx](x, x0, return_stats=need_stats)
+			x_out, x_in, delta = self.blocks[block_idx](x, x0, return_stats=need_stats)
 			if not need_stats:
 				return x_out
 
@@ -361,6 +364,9 @@ class GPT(nn.Module):
 					elif exec_pos == pos and delta_cache[idx] is not None:
 						add_pair(delta_cache[idx], delta_cache[idx] + delta)
 						delta_cache[idx] = None
+				elif self.self_distill_mode == 'block_io':
+					if exec_pos == pos:
+						add_pair(x_in, x_out)
 			return x_out
 
 		for i in enc_iter:

@@ -131,11 +131,6 @@ def parse_distill_positions(spec, total_positions, mode, env_name):
 				f"{env_name} entries must be in [1,{total_positions-1}] "
 				f"for adjacent supervision, got {pos}"
 			)
-		if mode == 'two_step_delta' and pos + 1 >= total_positions:
-			raise ValueError(
-				f"{env_name} entry {pos} leaves no next layer for "
-				f"two_step_delta with total_positions={total_positions}"
-			)
 	return positions
 class ValidationData:
 	def __init__(self,h,device):
@@ -325,8 +320,8 @@ class GPT(nn.Module):
 				watch_positions.add(pos - 1)
 				watch_positions.add(pos)
 			elif self.self_distill_mode == 'two_step_delta':
+				watch_positions.add(pos - 1)
 				watch_positions.add(pos)
-				watch_positions.add(pos + 1)
 
 		lower_cache = [None] * len(distill_positions)
 		delta_cache = [None] * len(distill_positions)
@@ -361,9 +356,9 @@ class GPT(nn.Module):
 						add_pair(lower_cache[idx], x_out)
 						lower_cache[idx] = None
 				elif self.self_distill_mode == 'two_step_delta':
-					if exec_pos == pos:
+					if exec_pos == pos - 1:
 						delta_cache[idx] = delta
-					elif exec_pos == pos + 1 and delta_cache[idx] is not None:
+					elif exec_pos == pos and delta_cache[idx] is not None:
 						add_pair(delta_cache[idx], delta_cache[idx] + delta)
 						delta_cache[idx] = None
 			return x_out
