@@ -451,7 +451,12 @@ class MLP(nn.Module):
             torch.tensor(spline_knots, dtype=torch.float32),
             persistent=False,
         )
-        if activation in {"relu_poly2", "leaky_poly2"}:
+        if activation in {
+            "relu_poly2",
+            "leaky_poly2",
+            "relu_cubic_residual",
+            "leaky_cubic_residual",
+        }:
             if poly_a_max <= 0.0:
                 raise ValueError(f"poly_a_max must be positive, got {poly_a_max}")
             init_ratio = poly_a_init / poly_a_max
@@ -511,6 +516,14 @@ class MLP(nn.Module):
         elif self.activation == "leaky_poly2":
             hidden = F.leaky_relu(preact, negative_slope=self.leaky_slope)
             hidden = hidden.square() + self._poly_coeff(hidden) * hidden
+        elif self.activation == "relu_cubic_residual":
+            hidden = F.relu(preact)
+            hidden_sq = hidden.square()
+            hidden = hidden_sq + self._poly_coeff(hidden) * hidden_sq * hidden
+        elif self.activation == "leaky_cubic_residual":
+            hidden = F.leaky_relu(preact, negative_slope=self.leaky_slope)
+            hidden_sq = hidden.square()
+            hidden = hidden_sq + self._poly_coeff(hidden) * hidden_sq * hidden
         elif self.activation == "relu_spline":
             hidden = F.relu(preact).square() + self._spline_residual(preact)
         elif self.activation == "leaky_spline":

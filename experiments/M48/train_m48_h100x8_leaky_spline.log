@@ -1,0 +1,185 @@
+Hyperparameters:
+  activation_probe_enabled: True
+  activation_probe_samples: 32768
+  activation_probe_tokens: 4096
+  adam_eps: 1e-08
+  adam_wd: 0.02
+  beta1: 0.9
+  beta2: 0.95
+  compressor: brotli
+  data_dir: ./data/
+  datasets_dir: ./data/datasets/fineweb10B_sp8192
+  distributed: True
+  ema_decay: 0.9965
+  embed_bits: 8
+  embed_clip_sigmas: 20.0
+  embed_lr: 0.6
+  embed_wd: 0.085
+  embedding_dim: 512
+  enable_looping_at: 0.35
+  etlb_clip: 3.0
+  etlb_enabled: False
+  etlb_lr: 0.05
+  etlb_steps: 5
+  eval_seq_len: 2048
+  eval_stride: 64
+  gptq_calibration_batches: 64
+  gptq_reserve_seconds: 12.0
+  grad_accum_steps: 1
+  grad_clip_norm: 0.3
+  head_lr: 0.008
+  is_main_process: True
+  iterations: 20000
+  ln_scale: True
+  local_rank: 0
+  logfile: logs/m48_h100x8_leaky_spline_s42.txt
+  logit_softcap: 30.0
+  loop_end: 5
+  loop_start: 3
+  matrix_bits: 6
+  matrix_clip_sigmas: 12.85
+  matrix_lr: 0.022
+  max_wallclock_seconds: 600.0
+  min_lr: 0.0
+  mlp_activation: leaky_spline
+  mlp_mult: 4.0
+  model_dim: 512
+  model_path: final_model.pt
+  muon_backend_steps: 5
+  muon_beta2: 0.95
+  muon_momentum: 0.99
+  muon_momentum_warmup_start: 0.92
+  muon_momentum_warmup_steps: 1500
+  muon_row_normalize: True
+  muon_wd: 0.095
+  num_heads: 8
+  num_kv_heads: 4
+  num_layers: 11
+  num_loops: 2
+  parallel_residual_start: 7
+  poly_a_init: 0.0
+  poly_a_max: 5.0
+  poly_a_per_channel: False
+  poly_leaky_slope: 0.5
+  qk_gain_init: 5.25
+  quantized_model_path: final_model.int6.ptz
+  rank: 0
+  rope_base: 10000.0
+  rope_dims: 16
+  rope_train_seq_len: 2048
+  run_id: m48_h100x8_leaky_spline_s42
+  scalar_lr: 0.02
+  seed: 42
+  skip_gates_enabled: True
+  sliding_window_enabled: True
+  spline_c_init: 0.0
+  spline_c_max: 2.0
+  spline_knots: (-1.0, -0.5, 0.0, 0.5, 1.0)
+  tie_embeddings: True
+  tied_embed_init_std: 0.005
+  tied_embed_lr: 0.03
+  tokenizer_path: ./data/tokenizers/fineweb_8192_bpe.model
+  train_batch_tokens: 786432
+  train_files: ./data/datasets/fineweb10B_sp8192/fineweb_train_*.bin
+  train_log_every: 500
+  train_seq_len: 2048
+  ttt_chunk_tokens: 32768
+  ttt_enabled: False
+  ttt_epochs: 3
+  ttt_lr: 0.005
+  ttt_momentum: 0.9
+  val_batch_tokens: 524288
+  val_files: ./data/datasets/fineweb10B_sp8192/fineweb_val_*.bin
+  val_loss_every: 4000
+  vocab_size: 8192
+  warmdown_frac: 0.72
+  warmup_steps: 20
+  world_size: 8
+  xsa_last_n: 11
+train_shards: 64
+val_tokens: 40540160
+model_params:35944591
+mlp_activation:leaky_spline poly_a_init:0.0 poly_a_max:5.0 poly_a_per_channel:0 spline_c_init:0.0 spline_c_max:2.0 spline_knots:(-1.0, -0.5, 0.0, 0.5, 1.0) poly_leaky_slope:0.5 activation_probe_enabled:1 activation_probe_tokens:4096 activation_probe_samples:32768
+activation_init spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_coeffs:[0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000]
+gptq:reserving 12s, effective=588000ms
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+0/20000 val_loss: 9.0090 val_bpb: 3.4877
+0/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_coeffs:[0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000]
+0/20000 activation_probe layer:0 n:32768 p01:-1.1953 p10:-0.6641 p50:-0.0356 p90:0.6367 p99:1.2109
+0/20000 activation_probe layer:1 n:32768 p01:-0.8294 p10:-0.4395 p50:0.0008 p90:0.4336 p99:0.9062
+0/20000 activation_probe layer:2 n:32768 p01:-0.6602 p10:-0.3613 p50:0.0120 p90:0.3750 p99:0.6641
+0/20000 activation_probe layer:3 n:32768 p01:-0.6445 p10:-0.3262 p50:-0.0030 p90:0.3379 p99:0.5703
+0/20000 activation_probe layer:4 n:32768 p01:-0.5664 p10:-0.2891 p50:0.0052 p90:0.2910 p99:0.5469
+0/20000 activation_probe layer:5 n:32768 p01:-0.4590 p10:-0.2656 p50:0.0005 p90:0.2422 p99:0.4590
+0/20000 activation_probe layer:6 n:32768 p01:-0.4355 p10:-0.2344 p50:-0.0052 p90:0.2461 p99:0.4323
+0/20000 activation_probe layer:7 n:32768 p01:-0.4121 p10:-0.2256 p50:-0.0057 p90:0.2188 p99:0.4082
+0/20000 activation_probe layer:8 n:32768 p01:-0.3796 p10:-0.2021 p50:-0.0021 p90:0.2148 p99:0.3926
+0/20000 activation_probe layer:9 n:32768 p01:-0.3848 p10:-0.1904 p50:0.0006 p90:0.1885 p99:0.3613
+0/20000 activation_probe layer:10 n:32768 p01:-0.3561 p10:-0.1973 p50:-0.0080 p90:0.1973 p99:0.3496
+1/20000 train_loss: 9.0087 train_time: 0.0m tok/s: 2294450
+1/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_coeffs:[0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000;0.0000,0.0000,0.0000,0.0000,0.0000]
+2/20000 train_loss: 12.3882 train_time: 0.0m tok/s: 2281321
+2/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0255 coeff_max:0.0294 coeff_std:0.0097 knot_means:[0.0294,0.0294,0.0294,0.0293,0.0098] layer_l1:[0.0294,0.0294,0.0292,0.0275,0.0237,0.0235,0.0235,0.0235,0.0235,0.0235,0.0234] layer_coeffs:[0.0294,0.0294,0.0294,0.0294,0.0294;0.0294,0.0294,0.0294,0.0294,0.0293;0.0294,0.0294,0.0294,0.0294,0.0282;0.0294,0.0294,0.0294,0.0294,0.0198;0.0294,0.0294,0.0294,0.0293,0.0010;0.0294,0.0294,0.0294,0.0292,0.0000;0.0294,0.0294,0.0294,0.0292,0.0000;0.0294,0.0294,0.0294,0.0292,0.0000;0.0294,0.0294,0.0294,0.0292,0.0000;0.0294,0.0294,0.0294,0.0292,0.0000;0.0294,0.0294,0.0294,0.0291,0.0000]
+3/20000 train_loss: 10.9434 train_time: 0.0m tok/s: 2273012
+3/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0534 coeff_max:0.0627 coeff_std:0.0202 knot_means:[0.0625,0.0624,0.0618,0.0599,0.0207] layer_l1:[0.0615,0.0612,0.0608,0.0584,0.0500,0.0496,0.0493,0.0492,0.0494,0.0492,0.0492] layer_coeffs:[0.0623,0.0621,0.0617,0.0611,0.0603;0.0623,0.0621,0.0616,0.0607,0.0592;0.0624,0.0623,0.0617,0.0606,0.0573;0.0623,0.0622,0.0617,0.0603,0.0456;0.0624,0.0623,0.0617,0.0601,0.0035;0.0624,0.0623,0.0617,0.0595,0.0022;0.0625,0.0624,0.0618,0.0596,0.0000;0.0626,0.0625,0.0619,0.0593,0.0000;0.0626,0.0625,0.0619,0.0598,0.0000;0.0627,0.0626,0.0619,0.0591,0.0000;0.0627,0.0626,0.0619,0.0588,0.0000]
+4/20000 train_loss: 9.4829 train_time: 0.0m tok/s: 2269168
+4/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.0838 coeff_max:0.0981 coeff_std:0.0315 knot_means:[0.0978,0.0976,0.0967,0.0936,0.0331] layer_l1:[0.0961,0.0957,0.0952,0.0923,0.0786,0.0779,0.0771,0.0771,0.0773,0.0771,0.0770] layer_coeffs:[0.0975,0.0972,0.0965,0.0954,0.0941;0.0975,0.0972,0.0964,0.0948,0.0925;0.0977,0.0975,0.0966,0.0946,0.0897;0.0976,0.0974,0.0965,0.0942,0.0755;0.0977,0.0975,0.0966,0.0939,0.0074;0.0977,0.0975,0.0965,0.0931,0.0046;0.0979,0.0977,0.0967,0.0931,0.0000;0.0980,0.0979,0.0969,0.0927,0.0000;0.0981,0.0979,0.0969,0.0935,0.0000;0.0981,0.0980,0.0969,0.0923,0.0000;0.0981,0.0980,0.0969,0.0919,0.0000]
+5/20000 train_loss: 8.4812 train_time: 0.0m tok/s: 2267420
+5/20000 spline_c coeff_n:55 coeff_min:0.0000 coeff_mean:0.1153 coeff_max:0.1348 coeff_std:0.0432 knot_means:[0.1344,0.1341,0.1330,0.1290,0.0462] layer_l1:[0.1322,0.1316,0.1310,0.1276,0.1086,0.1073,0.1060,0.1060,0.1063,0.1060,0.1059] layer_coeffs:[0.1339,0.1336,0.1327,0.1314,0.1296;0.1340,0.1336,0.1326,0.1305,0.1274;0.1343,0.1340,0.1328,0.1303,0.1238;0.1341,0.1339,0.1328,0.1297,0.1076;0.1342,0.1340,0.1328,0.1293,0.0125;0.1343,0.1340,0.1328,0.1283,0.0072;0.1345,0.1343,0.1330,0.1282,0.0001;0.1346,0.1345,0.1332,0.1279,0.0000;0.1347,0.1345,0.1333,0.1290,0.0000;0.1348,0.1346,0.1332,0.1275,0.0000;0.1348,0.1346,0.1332,0.1268,0.0000]
+500/20000 train_loss: 3.3050 train_time: 2.9m tok/s: 2263736
+500/20000 spline_c coeff_n:55 coeff_min:-0.7641 coeff_mean:0.4295 coeff_max:1.9454 coeff_std:0.8508 knot_means:[0.0243,-0.3986,0.0925,0.9460,1.4831] layer_l1:[0.3147,0.4105,0.4988,0.6094,0.6873,0.8159,0.8529,0.8680,0.8389,0.7157,0.8961] layer_coeffs:[-0.1125,-0.0976,-0.1928,-0.4065,-0.7641;-0.0881,-0.1924,-0.2860,-0.3025,1.1834;-0.0536,-0.2852,-0.1463,0.2875,1.7214;-0.0018,-0.3768,-0.1063,0.7235,1.8384;0.0348,-0.4246,-0.1151,0.9517,1.9105;0.0477,-0.5681,0.1086,1.4103,1.9448;0.0743,-0.5954,0.1339,1.5155,1.9454;0.0943,-0.5746,0.1675,1.5712,1.9324;0.0852,-0.5096,0.2246,1.5083,1.8666;0.0820,-0.3933,0.2463,1.2449,1.6122;0.1056,-0.3666,0.9835,1.9018,1.1228]
+layer_loop:enabled step:593 frac:0.350 encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+1000/20000 train_loss: 3.1557 train_time: 6.3m tok/s: 2082835
+1000/20000 spline_c coeff_n:55 coeff_min:-0.7942 coeff_mean:0.2977 coeff_max:1.9600 coeff_std:0.7343 knot_means:[-0.0141,-0.2931,0.0634,0.3921,1.3403] layer_l1:[0.3303,0.3672,0.4339,0.4336,0.5051,0.6093,0.7111,0.7208,0.6519,0.4030,0.6702] layer_coeffs:[-0.0344,-0.0334,-0.2673,-0.5223,-0.7942;-0.0776,-0.1233,-0.3353,-0.6291,0.6705;-0.0961,-0.1898,-0.1368,-0.0638,1.6829;-0.0220,-0.3251,-0.0553,0.0987,1.6670;0.0067,-0.3718,-0.0332,0.3063,1.8072;-0.0237,-0.4088,0.1565,0.6013,1.8564;-0.0888,-0.3103,0.2439,0.9528,1.9600;0.0063,-0.4229,0.1941,1.0262,1.9546;0.0220,-0.3923,0.1363,0.8395,1.8693;0.0453,-0.2794,0.0086,0.4246,1.2569;0.1067,-0.3668,0.7859,1.2791,0.8123]
+1500/20000 train_loss: 2.9811 train_time: 9.8m tok/s: 2005805
+1500/20000 spline_c coeff_n:55 coeff_min:-0.7060 coeff_mean:0.2780 coeff_max:1.9416 coeff_std:0.6699 knot_means:[-0.0436,-0.2248,0.0780,0.3482,1.2322] layer_l1:[0.3126,0.3280,0.4105,0.3754,0.4765,0.5702,0.7011,0.6918,0.5873,0.3283,0.4900] layer_coeffs:[-0.0324,-0.0246,-0.2745,-0.5255,-0.7060;-0.0648,-0.1230,-0.3368,-0.5305,0.5848;-0.1125,-0.1467,-0.0780,0.0783,1.6371;-0.0412,-0.2529,0.0316,0.0771,1.4740;-0.0320,-0.3036,0.0630,0.3176,1.6662;-0.0894,-0.2650,0.2055,0.5686,1.7226;-0.1730,-0.1408,0.3296,0.9206,1.9416;-0.0405,-0.3244,0.2329,0.9258,1.9351;-0.0096,-0.3192,0.1338,0.7479,1.7261;0.0350,-0.2400,-0.0149,0.3422,1.0095;0.0806,-0.3329,0.5654,0.9076,0.5633]
+1500/20000 val_loss: 2.9442 val_bpb: 1.1398
+1500/20000 spline_c coeff_n:55 coeff_min:-0.7060 coeff_mean:0.2780 coeff_max:1.9416 coeff_std:0.6699 knot_means:[-0.0436,-0.2248,0.0780,0.3482,1.2322] layer_l1:[0.3126,0.3280,0.4105,0.3754,0.4765,0.5702,0.7011,0.6918,0.5873,0.3283,0.4900] layer_coeffs:[-0.0324,-0.0246,-0.2745,-0.5255,-0.7060;-0.0648,-0.1230,-0.3368,-0.5305,0.5848;-0.1125,-0.1467,-0.0780,0.0783,1.6371;-0.0412,-0.2529,0.0316,0.0771,1.4740;-0.0320,-0.3036,0.0630,0.3176,1.6662;-0.0894,-0.2650,0.2055,0.5686,1.7226;-0.1730,-0.1408,0.3296,0.9206,1.9416;-0.0405,-0.3244,0.2329,0.9258,1.9351;-0.0096,-0.3192,0.1338,0.7479,1.7261;0.0350,-0.2400,-0.0149,0.3422,1.0095;0.0806,-0.3329,0.5654,0.9076,0.5633]
+1500/20000 activation_probe layer:0 n:32768 p01:-3.0156 p10:-1.6094 p50:-0.2812 p90:1.0234 p99:2.4531
+1500/20000 activation_probe layer:1 n:32768 p01:-1.9766 p10:-1.1172 p50:-0.2520 p90:0.7070 p99:1.8047
+1500/20000 activation_probe layer:2 n:32768 p01:-1.5703 p10:-0.9531 p50:-0.2480 p90:0.5469 p99:1.4297
+1500/20000 activation_probe layer:3 n:32768 p01:-1.4297 p10:-0.9023 p50:-0.2637 p90:0.4648 p99:1.2422
+1500/20000 activation_probe layer:3 n:32768 p01:-1.4844 p10:-0.9258 p50:-0.2422 p90:0.5273 p99:1.3359
+1500/20000 activation_probe layer:3 n:32768 p01:-1.4219 p10:-0.8672 p50:-0.1719 p90:0.5859 p99:1.4062
+1500/20000 activation_probe layer:4 n:32768 p01:-1.3516 p10:-0.8945 p50:-0.2832 p90:0.3965 p99:1.0469
+1500/20000 activation_probe layer:4 n:32768 p01:-1.2812 p10:-0.8125 p50:-0.2129 p90:0.4707 p99:1.2057
+1500/20000 activation_probe layer:4 n:32768 p01:-1.2266 p10:-0.7617 p50:-0.1904 p90:0.4596 p99:1.1641
+1500/20000 activation_probe layer:5 n:32768 p01:-1.2969 p10:-0.8203 p50:-0.2354 p90:0.4180 p99:1.0781
+1500/20000 activation_probe layer:5 n:32768 p01:-1.2891 p10:-0.8008 p50:-0.1953 p90:0.4785 p99:1.1328
+1500/20000 activation_probe layer:5 n:32768 p01:-1.3438 p10:-0.8477 p50:-0.2266 p90:0.4316 p99:1.0625
+1500/20000 activation_probe layer:6 n:32768 p01:-1.0625 p10:-0.6406 p50:-0.0928 p90:0.5195 p99:1.1094
+1500/20000 activation_probe layer:7 n:32768 p01:-0.9922 p10:-0.5781 p50:-0.0520 p90:0.5117 p99:1.0469
+1500/20000 activation_probe layer:8 n:32768 p01:-0.9961 p10:-0.5898 p50:-0.0903 p90:0.4609 p99:0.9883
+1500/20000 activation_probe layer:9 n:32768 p01:-0.9297 p10:-0.5664 p50:-0.1406 p90:0.3457 p99:0.8281
+1500/20000 activation_probe layer:10 n:32768 p01:-0.7852 p10:-0.4688 p50:-0.1165 p90:0.2715 p99:0.6445
+stopping_early: wallclock_cap train_time: 588123ms step: 1500/20000
+peak memory allocated: 50564 MiB reserved: 50646 MiB
+ema:applying EMA weights
+pre-quantization post-ema val_loss:2.96239028 val_bpb:1.14683360 eval_time:8006ms
+Serialized model: 135434511 bytes
+Code size: 76830 bytes
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 25.1s
+Quantized weights:
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int8): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp.spline_c_param, blocks.mlp_scale, blocks.resid_mix, skip_gates, skip_weights
+Serialized model quantized+brotli: 15989789 bytes
+Total submission size quantized+brotli: 16066619 bytes
+quantized val_loss:2.97908111 val_bpb:1.15329514 eval_time:26824ms
