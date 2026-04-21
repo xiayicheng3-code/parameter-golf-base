@@ -29,9 +29,9 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
     mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
-    mlp_activation = os.environ.get("MLP_ACTIVATION", "relu_poly2")
-    poly_a_init = float(os.environ.get("POLY_A_INIT", 0.1))
-    poly_a_max = float(os.environ.get("POLY_A_MAX", 0.5))
+    mlp_activation = os.environ.get("MLP_ACTIVATION", "leaky_poly2")
+    poly_a_init = float(os.environ.get("POLY_A_INIT", 0.0))
+    poly_a_max = float(os.environ.get("POLY_A_MAX", 5.0))
     poly_a_per_channel = bool(int(os.environ.get("POLY_A_PER_CHANNEL", "0")))
     poly_leaky_slope = float(os.environ.get("POLY_LEAKY_SLOPE", 0.5))
     skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
@@ -425,40 +425,40 @@ class MLP(nn.Module):
         self.activation = activation
         self.leaky_slope = leaky_slope
         self.poly_a_max = poly_a_max
-        self.poly_a_logit = None
+        self.poly_a_param = None
         if activation in {"relu_poly2", "leaky_poly2"}:
             if poly_a_max <= 0.0:
                 raise ValueError(f"poly_a_max must be positive, got {poly_a_max}")
             init_ratio = poly_a_init / poly_a_max
-            init_ratio = min(max(init_ratio, 1e-4), 1.0 - 1e-4)
-            init_logit = math.log(init_ratio / (1.0 - init_ratio))
+            init_ratio = min(max(init_ratio, -1.0 + 1e-4), 1.0 - 1e-4)
+            init_param = math.atanh(init_ratio)
             shape = (hidden,) if poly_a_per_channel else ()
-            self.poly_a_logit = nn.Parameter(
-                torch.full(shape, init_logit, dtype=torch.float32)
+            self.poly_a_param = nn.Parameter(
+                torch.full(shape, init_param, dtype=torch.float32)
             )
 
     def _poly_coeff(self, x):
-        if self.poly_a_logit is None:
+        if self.poly_a_param is None:
             raise RuntimeError("poly coefficient requested for non-poly activation")
-        coeff = self.poly_a_max * torch.sigmoid(self.poly_a_logit)
+        coeff = self.poly_a_max * torch.tanh(self.poly_a_param)
         coeff = coeff.to(dtype=x.dtype)
         if coeff.ndim == 0:
             return coeff
         return coeff.view(*([1] * (x.ndim - 1)), -1)
 
     def poly_coeff_tensor(self):
-        if self.poly_a_logit is None:
+        if self.poly_a_param is None:
             return None
-        return self.poly_a_max * torch.sigmoid(self.poly_a_logit.detach())
+        return self.poly_a_max * torch.tanh(self.poly_a_param.detach())
 
     def forward(self, x):
         hidden = self.fc(x)
         if self.activation == "relu_poly2":
             hidden = F.relu(hidden)
-            hidden = hidden + self._poly_coeff(hidden) * hidden.square()
+            hidden = hidden.square() + self._poly_coeff(hidden) * hidden
         elif self.activation == "leaky_poly2":
             hidden = F.leaky_relu(hidden, negative_slope=self.leaky_slope)
-            hidden = hidden + self._poly_coeff(hidden) * hidden.square()
+            hidden = hidden.square() + self._poly_coeff(hidden) * hidden
         elif self.activation == "relu2":
             hidden = F.relu(hidden).square()
         elif self.activation == "leaky_relu2":
