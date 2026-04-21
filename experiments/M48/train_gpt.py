@@ -6,6 +6,13 @@ from torch import Tensor, nn
 from flash_attn_interface import flash_attn_func as flash_attn_3_func
 
 
+def _parse_float_csv(raw):
+    values = tuple(float(x.strip()) for x in raw.split(",") if x.strip())
+    if not values:
+        raise ValueError("Expected at least one float in CSV string")
+    return values
+
+
 class Hyperparameters:
     data_dir = os.environ.get("DATA_DIR", "./data/")
     seed = int(os.environ.get("SEED", 1337))
@@ -20,6 +27,11 @@ class Hyperparameters:
     val_batch_tokens = int(os.environ.get("VAL_BATCH_TOKENS", 524288))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
     val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 4000))
+    activation_probe_enabled = bool(
+        int(os.environ.get("ACTIVATION_PROBE_ENABLED", "1"))
+    )
+    activation_probe_tokens = int(os.environ.get("ACTIVATION_PROBE_TOKENS", 4096))
+    activation_probe_samples = int(os.environ.get("ACTIVATION_PROBE_SAMPLES", 32768))
     sliding_window_enabled = bool(int(os.environ.get("SLIDING_WINDOW_ENABLED", "1")))
     vocab_size = int(os.environ.get("VOCAB_SIZE", 8192))
     num_layers = int(os.environ.get("NUM_LAYERS", 11))
@@ -29,10 +41,13 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
     mlp_mult = float(os.environ.get("MLP_MULT", 4.0))
-    mlp_activation = os.environ.get("MLP_ACTIVATION", "leaky_poly2")
+    mlp_activation = os.environ.get("MLP_ACTIVATION", "leaky_spline")
     poly_a_init = float(os.environ.get("POLY_A_INIT", 0.0))
     poly_a_max = float(os.environ.get("POLY_A_MAX", 5.0))
     poly_a_per_channel = bool(int(os.environ.get("POLY_A_PER_CHANNEL", "0")))
+    spline_c_init = float(os.environ.get("SPLINE_C_INIT", 0.0))
+    spline_c_max = float(os.environ.get("SPLINE_C_MAX", 2.0))
+    spline_knots = _parse_float_csv(os.environ.get("SPLINE_KNOTS", "-1,-0.5,0,0.5,1"))
     poly_leaky_slope = float(os.environ.get("POLY_LEAKY_SLOPE", 0.5))
     skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
@@ -411,10 +426,13 @@ class MLP(nn.Module):
         self,
         dim,
         mlp_mult,
-        activation="relu_poly2",
-        poly_a_init=0.1,
-        poly_a_max=0.5,
+        activation="leaky_spline",
+        poly_a_init=0.0,
+        poly_a_max=5.0,
         poly_a_per_channel=False,
+        spline_c_init=0.0,
+        spline_c_max=2.0,
+        spline_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
         leaky_slope=0.5,
     ):
         super().__init__()
@@ -426,6 +444,13 @@ class MLP(nn.Module):
         self.leaky_slope = leaky_slope
         self.poly_a_max = poly_a_max
         self.poly_a_param = None
+        self.spline_c_max = spline_c_max
+        self.spline_c_param = None
+        self.register_buffer(
+            "spline_knots",
+            torch.tensor(spline_knots, dtype=torch.float32),
+            persistent=False,
+        )
         if activation in {"relu_poly2", "leaky_poly2"}:
             if poly_a_max <= 0.0:
                 raise ValueError(f"poly_a_max must be positive, got {poly_a_max}")
@@ -435,6 +460,15 @@ class MLP(nn.Module):
             shape = (hidden,) if poly_a_per_channel else ()
             self.poly_a_param = nn.Parameter(
                 torch.full(shape, init_param, dtype=torch.float32)
+            )
+        if activation in {"relu_spline", "leaky_spline"}:
+            if spline_c_max <= 0.0:
+                raise ValueError(f"spline_c_max must be positive, got {spline_c_max}")
+            init_ratio = spline_c_init / spline_c_max
+            init_ratio = min(max(init_ratio, -1.0 + 1e-4), 1.0 - 1e-4)
+            init_param = math.atanh(init_ratio)
+            self.spline_c_param = nn.Parameter(
+                torch.full((len(spline_knots),), init_param, dtype=torch.float32)
             )
 
     def _poly_coeff(self, x):
@@ -451,18 +485,41 @@ class MLP(nn.Module):
             return None
         return self.poly_a_max * torch.tanh(self.poly_a_param.detach())
 
+    def _spline_coeff(self, x):
+        if self.spline_c_param is None:
+            raise RuntimeError("spline coefficient requested for non-spline activation")
+        return self.spline_c_max * torch.tanh(self.spline_c_param).to(dtype=x.dtype)
+
+    def spline_coeff_tensor(self):
+        if self.spline_c_param is None:
+            return None
+        return self.spline_c_max * torch.tanh(self.spline_c_param.detach())
+
+    def _spline_residual(self, preact):
+        coeff = self._spline_coeff(preact)
+        knots = self.spline_knots.to(device=preact.device, dtype=preact.dtype)
+        basis = F.relu(
+            preact.unsqueeze(-1) - knots.view(*([1] * preact.ndim), knots.numel())
+        )
+        return (basis * coeff.view(*([1] * preact.ndim), coeff.numel())).sum(dim=-1)
+
     def forward(self, x):
-        hidden = self.fc(x)
+        preact = self.fc(x)
         if self.activation == "relu_poly2":
-            hidden = F.relu(hidden)
+            hidden = F.relu(preact)
             hidden = hidden.square() + self._poly_coeff(hidden) * hidden
         elif self.activation == "leaky_poly2":
-            hidden = F.leaky_relu(hidden, negative_slope=self.leaky_slope)
+            hidden = F.leaky_relu(preact, negative_slope=self.leaky_slope)
             hidden = hidden.square() + self._poly_coeff(hidden) * hidden
+        elif self.activation == "relu_spline":
+            hidden = F.relu(preact).square() + self._spline_residual(preact)
+        elif self.activation == "leaky_spline":
+            hidden = F.leaky_relu(preact, negative_slope=self.leaky_slope).square()
+            hidden = hidden + self._spline_residual(preact)
         elif self.activation == "relu2":
-            hidden = F.relu(hidden).square()
+            hidden = F.relu(preact).square()
         elif self.activation == "leaky_relu2":
-            hidden = F.leaky_relu(hidden, negative_slope=self.leaky_slope).square()
+            hidden = F.leaky_relu(preact, negative_slope=self.leaky_slope).square()
         else:
             raise ValueError(f"Unsupported MLP_ACTIVATION={self.activation}")
         return self.proj(hidden)
@@ -481,10 +538,13 @@ class Block(nn.Module):
         train_seq_len,
         layer_idx=0,
         ln_scale=False,
-        mlp_activation="relu_poly2",
-        poly_a_init=0.1,
-        poly_a_max=0.5,
+        mlp_activation="leaky_spline",
+        poly_a_init=0.0,
+        poly_a_max=5.0,
         poly_a_per_channel=False,
+        spline_c_init=0.0,
+        spline_c_max=2.0,
+        spline_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
         poly_leaky_slope=0.5,
     ):
         super().__init__()
@@ -500,6 +560,9 @@ class Block(nn.Module):
             poly_a_init=poly_a_init,
             poly_a_max=poly_a_max,
             poly_a_per_channel=poly_a_per_channel,
+            spline_c_init=spline_c_init,
+            spline_c_max=spline_c_max,
+            spline_knots=spline_knots,
             leaky_slope=poly_leaky_slope,
         )
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
@@ -565,6 +628,9 @@ class GPT(nn.Module):
                     poly_a_init=h.poly_a_init,
                     poly_a_max=h.poly_a_max,
                     poly_a_per_channel=h.poly_a_per_channel,
+                    spline_c_init=h.spline_c_init,
+                    spline_c_max=h.spline_c_max,
+                    spline_knots=h.spline_knots,
                     poly_leaky_slope=h.poly_leaky_slope,
                 )
                 for i in range(h.num_layers)
@@ -661,6 +727,35 @@ class GPT(nn.Module):
             f"layer_mean_max:{layer_means_t.max().item():.4f} "
             f"layer_mean_std:{layer_mean_std:.4f} layer_means:[{layer_means_str}]"
         )
+
+    def spline_c_log_line(self):
+        layer_coeffs = []
+        for block in self.blocks:
+            coeff = block.mlp.spline_coeff_tensor()
+            if coeff is None:
+                continue
+            layer_coeffs.append(coeff.float().reshape(-1))
+        if not layer_coeffs:
+            return None
+        coeffs = torch.stack(layer_coeffs)
+        flat = coeffs.reshape(-1)
+        knot_means = coeffs.mean(dim=0)
+        layer_l1 = coeffs.abs().mean(dim=1)
+        knot_means_str = ",".join(f"{x:.4f}" for x in knot_means.cpu().tolist())
+        layer_l1_str = ",".join(f"{x:.4f}" for x in layer_l1.cpu().tolist())
+        layer_coeffs_str = ";".join(
+            ",".join(f"{x:.4f}" for x in row.cpu().tolist()) for row in coeffs
+        )
+        return (
+            f"spline_c coeff_n:{flat.numel()} coeff_min:{flat.min().item():.4f} "
+            f"coeff_mean:{flat.mean().item():.4f} coeff_max:{flat.max().item():.4f} "
+            f"coeff_std:{flat.std(unbiased=False).item():.4f} "
+            f"knot_means:[{knot_means_str}] layer_l1:[{layer_l1_str}] "
+            f"layer_coeffs:[{layer_coeffs_str}]"
+        )
+
+    def activation_log_line(self):
+        return self.spline_c_log_line() or self.poly_a_log_line()
 
     def forward_logits(self, input_ids):
         x = self.tok_emb(input_ids)
@@ -1434,6 +1529,65 @@ def timed_eval(label, fn, *args, **kwargs):
     return (val_loss, val_bpb)
 
 
+def _sample_flat_tensor(tensor, max_samples):
+    flat = tensor.detach().float().reshape(-1)
+    if flat.numel() <= max_samples:
+        return flat.cpu()
+    stride = max(flat.numel() // max_samples, 1)
+    return flat[::stride][:max_samples].cpu()
+
+
+def activation_probe_lines(base_model, h, device, val_data):
+    if not h.activation_probe_enabled or not h.is_main_process:
+        return []
+    probe_tokens = min(
+        h.activation_probe_tokens,
+        max(0, val_data.val_tokens.numel() - 1),
+    )
+    if probe_tokens <= 0:
+        return []
+    seq_len = min(h.eval_seq_len, probe_tokens)
+    num_seqs = max(probe_tokens // seq_len, 1)
+    usable = num_seqs * seq_len
+    tokens = val_data.val_tokens[: usable + 1].to(device, non_blocking=True)
+    probe_x = tokens[:-1].view(num_seqs, seq_len)
+    captured = []
+    hooks = []
+
+    def make_hook(layer_idx):
+        def hook(_module, _inputs, output):
+            captured.append(
+                (layer_idx, _sample_flat_tensor(output, h.activation_probe_samples))
+            )
+
+        return hook
+
+    for layer_idx, block in enumerate(base_model.blocks):
+        hooks.append(block.mlp.fc.register_forward_hook(make_hook(layer_idx)))
+    was_training = base_model.training
+    try:
+        base_model.eval()
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                base_model.forward_logits(probe_x)
+    finally:
+        for hook in hooks:
+            hook.remove()
+        if was_training:
+            base_model.train()
+    captured.sort(key=lambda pair: pair[0])
+    quantile_levels = torch.tensor([0.01, 0.10, 0.50, 0.90, 0.99], dtype=torch.float32)
+    lines = []
+    for layer_idx, sample in captured:
+        qs = torch.quantile(sample, quantile_levels)
+        lines.append(
+            f"activation_probe layer:{layer_idx} n:{sample.numel()} "
+            f"p01:{qs[0].item():.4f} p10:{qs[1].item():.4f} "
+            f"p50:{qs[2].item():.4f} p90:{qs[3].item():.4f} p99:{qs[4].item():.4f}"
+        )
+    return lines
+
+
 def train_model(h, device, val_data):
     base_model = GPT(h).to(device).bfloat16()
     restore_fp32_params(base_model)
@@ -1446,16 +1600,24 @@ def train_model(h, device, val_data):
     log(
         f"mlp_activation:{h.mlp_activation} poly_a_init:{h.poly_a_init} "
         f"poly_a_max:{h.poly_a_max} poly_a_per_channel:{int(h.poly_a_per_channel)} "
-        f"poly_leaky_slope:{h.poly_leaky_slope}"
+        f"spline_c_init:{h.spline_c_init} spline_c_max:{h.spline_c_max} "
+        f"spline_knots:{h.spline_knots} poly_leaky_slope:{h.poly_leaky_slope} "
+        f"activation_probe_enabled:{int(h.activation_probe_enabled)} "
+        f"activation_probe_tokens:{h.activation_probe_tokens} "
+        f"activation_probe_samples:{h.activation_probe_samples}"
     )
 
-    def log_poly_a(prefix):
+    def log_activation(prefix):
         with torch.no_grad():
-            poly_a_line = base_model.poly_a_log_line()
-        if poly_a_line is not None:
-            log(f"{prefix} {poly_a_line}")
+            activation_line = base_model.activation_log_line()
+        if activation_line is not None:
+            log(f"{prefix} {activation_line}")
 
-    log_poly_a("poly_a_init")
+    def log_activation_probe(prefix):
+        for line in activation_probe_lines(base_model, h, device, val_data):
+            log(f"{prefix} {line}")
+
+    log_activation("activation_init")
     optimizers = Optimizers(h, base_model)
     train_loader = ShuffledSequenceLoader(h, device)
     max_wallclock_ms = (
@@ -1570,7 +1732,8 @@ def train_model(h, device, val_data):
             log(
                 f"{step}/{h.iterations} val_loss: {val_loss:.4f} val_bpb: {val_bpb:.4f}"
             )
-            log_poly_a(f"{step}/{h.iterations}")
+            log_activation(f"{step}/{h.iterations}")
+            log_activation_probe(f"{step}/{h.iterations}")
             torch.cuda.synchronize()
             t0 = time.perf_counter()
         if last_step:
@@ -1609,7 +1772,7 @@ def train_model(h, device, val_data):
             log(
                 f"{step}/{h.iterations} train_loss: {train_loss.item():.4f} train_time: {approx_training_time_ms / 60000:.1f}m tok/s: {tok_per_sec:.0f}"
             )
-            log_poly_a(f"{step}/{h.iterations}")
+            log_activation(f"{step}/{h.iterations}")
         reached_cap = (
             max_wallclock_ms is not None and approx_training_time_ms >= max_wallclock_ms
         )

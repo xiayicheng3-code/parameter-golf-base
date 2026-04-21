@@ -1,0 +1,166 @@
+Hyperparameters:
+  adam_eps: 1e-08
+  adam_wd: 0.02
+  beta1: 0.9
+  beta2: 0.95
+  compressor: brotli
+  data_dir: ./data/
+  datasets_dir: ./data/datasets/fineweb10B_sp8192
+  distributed: True
+  ema_decay: 0.9965
+  embed_bits: 8
+  embed_clip_sigmas: 20.0
+  embed_lr: 0.6
+  embed_wd: 0.085
+  embedding_dim: 512
+  enable_looping_at: 0.35
+  etlb_clip: 3.0
+  etlb_enabled: False
+  etlb_lr: 0.05
+  etlb_steps: 5
+  eval_seq_len: 2048
+  eval_stride: 64
+  gptq_calibration_batches: 64
+  gptq_reserve_seconds: 12.0
+  grad_accum_steps: 1
+  grad_clip_norm: 0.3
+  head_lr: 0.008
+  is_main_process: True
+  iterations: 20000
+  ln_scale: True
+  local_rank: 0
+  logfile: logs/m48_h100x8_leaky_poly_u2_plus_au_wide_s42.txt
+  logit_softcap: 30.0
+  loop_end: 5
+  loop_start: 3
+  matrix_bits: 6
+  matrix_clip_sigmas: 12.85
+  matrix_lr: 0.022
+  max_wallclock_seconds: 600.0
+  min_lr: 0.0
+  mlp_activation: leaky_poly2
+  mlp_mult: 4.0
+  model_dim: 512
+  model_path: final_model.pt
+  muon_backend_steps: 5
+  muon_beta2: 0.95
+  muon_momentum: 0.99
+  muon_momentum_warmup_start: 0.92
+  muon_momentum_warmup_steps: 1500
+  muon_row_normalize: True
+  muon_wd: 0.095
+  num_heads: 8
+  num_kv_heads: 4
+  num_layers: 11
+  num_loops: 2
+  parallel_residual_start: 7
+  poly_a_init: 0.0
+  poly_a_max: 5.0
+  poly_a_per_channel: False
+  poly_leaky_slope: 0.5
+  qk_gain_init: 5.25
+  quantized_model_path: final_model.int6.ptz
+  rank: 0
+  rope_base: 10000.0
+  rope_dims: 16
+  rope_train_seq_len: 2048
+  run_id: m48_h100x8_leaky_poly_u2_plus_au_wide_s42
+  scalar_lr: 0.02
+  seed: 42
+  skip_gates_enabled: True
+  sliding_window_enabled: True
+  tie_embeddings: True
+  tied_embed_init_std: 0.005
+  tied_embed_lr: 0.03
+  tokenizer_path: ./data/tokenizers/fineweb_8192_bpe.model
+  train_batch_tokens: 786432
+  train_files: ./data/datasets/fineweb10B_sp8192/fineweb_train_*.bin
+  train_log_every: 500
+  train_seq_len: 2048
+  ttt_chunk_tokens: 32768
+  ttt_enabled: False
+  ttt_epochs: 3
+  ttt_lr: 0.005
+  ttt_momentum: 0.9
+  val_batch_tokens: 524288
+  val_files: ./data/datasets/fineweb10B_sp8192/fineweb_val_*.bin
+  val_loss_every: 4000
+  vocab_size: 8192
+  warmdown_frac: 0.72
+  warmup_steps: 20
+  world_size: 8
+  xsa_last_n: 11
+train_shards: 64
+val_tokens: 40540160
+model_params:35944547
+mlp_activation:leaky_poly2 poly_a_init:0.0 poly_a_max:5.0 poly_a_per_channel:0 poly_leaky_slope:0.5
+poly_a_init poly_a coeff_n:11 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 layer_mean_min:0.0000 layer_mean_mean:0.0000 layer_mean_max:0.0000 layer_mean_std:0.0000 layer_means:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+gptq:reserving 12s, effective=588000ms
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+0/20000 val_loss: 9.0090 val_bpb: 3.4877
+0/20000 poly_a coeff_n:11 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 layer_mean_min:0.0000 layer_mean_mean:0.0000 layer_mean_max:0.0000 layer_mean_std:0.0000 layer_means:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+1/20000 train_loss: 9.0087 train_time: 0.0m tok/s: 7913241
+1/20000 poly_a coeff_n:11 coeff_min:0.0000 coeff_mean:0.0000 coeff_max:0.0000 coeff_std:0.0000 layer_mean_min:0.0000 layer_mean_mean:0.0000 layer_mean_max:0.0000 layer_mean_std:0.0000 layer_means:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+2/20000 train_loss: 12.3882 train_time: 0.0m tok/s: 7954174
+2/20000 poly_a coeff_n:11 coeff_min:0.0735 coeff_mean:0.0735 coeff_max:0.0735 coeff_std:0.0000 layer_mean_min:0.0735 layer_mean_mean:0.0735 layer_mean_max:0.0735 layer_mean_std:0.0000 layer_means:[0.0735,0.0735,0.0735,0.0735,0.0735,0.0735,0.0735,0.0735,0.0735,0.0735,0.0735]
+3/20000 train_loss: 10.9472 train_time: 0.0m tok/s: 7909209
+3/20000 poly_a coeff_n:11 coeff_min:0.1505 coeff_mean:0.1509 coeff_max:0.1512 coeff_std:0.0003 layer_mean_min:0.1505 layer_mean_mean:0.1509 layer_mean_max:0.1512 layer_mean_std:0.0003 layer_means:[0.1507,0.1505,0.1507,0.1508,0.1508,0.1506,0.1509,0.1512,0.1512,0.1511,0.1512]
+4/20000 train_loss: 9.4172 train_time: 0.0m tok/s: 7885878
+4/20000 poly_a coeff_n:11 coeff_min:0.2346 coeff_mean:0.2353 coeff_max:0.2359 coeff_std:0.0005 layer_mean_min:0.2346 layer_mean_mean:0.2353 layer_mean_max:0.2359 layer_mean_std:0.0005 layer_means:[0.2351,0.2346,0.2349,0.2351,0.2351,0.2347,0.2353,0.2359,0.2359,0.2357,0.2359]
+5/20000 train_loss: 8.4005 train_time: 0.0m tok/s: 7869308
+5/20000 poly_a coeff_n:11 coeff_min:0.3229 coeff_mean:0.3238 coeff_max:0.3247 coeff_std:0.0007 layer_mean_min:0.3229 layer_mean_mean:0.3238 layer_mean_max:0.3247 layer_mean_std:0.0007 layer_means:[0.3238,0.3230,0.3232,0.3232,0.3232,0.3229,0.3238,0.3246,0.3247,0.3245,0.3247]
+500/20000 train_loss: 3.3083 train_time: 0.8m tok/s: 7733581
+500/20000 poly_a coeff_n:11 coeff_min:-0.8407 coeff_mean:-0.5076 coeff_max:0.1305 coeff_std:0.2940 layer_mean_min:-0.8407 layer_mean_mean:-0.5076 layer_mean_max:0.1305 layer_mean_std:0.2940 layer_means:[0.1305,-0.7147,-0.8407,-0.7896,-0.7265,-0.6635,-0.5881,-0.5085,-0.4394,-0.3996,-0.0437]
+1000/20000 train_loss: 3.2674 train_time: 1.7m tok/s: 7719135
+1000/20000 poly_a coeff_n:11 coeff_min:-0.9293 coeff_mean:-0.6490 coeff_max:-0.1189 coeff_std:0.2462 layer_mean_min:-0.9293 layer_mean_mean:-0.6490 layer_mean_max:-0.1189 layer_mean_std:0.2462 layer_means:[-0.3094,-0.8568,-0.9293,-0.8889,-0.8494,-0.7936,-0.6853,-0.6310,-0.5817,-0.4947,-0.1189]
+1500/20000 train_loss: 3.2006 train_time: 2.5m tok/s: 7715773
+1500/20000 poly_a coeff_n:11 coeff_min:-0.9220 coeff_mean:-0.6534 coeff_max:-0.1438 coeff_std:0.2166 layer_mean_min:-0.9220 layer_mean_mean:-0.6534 layer_mean_max:-0.1438 layer_mean_std:0.2166 layer_means:[-0.5425,-0.7296,-0.8549,-0.9116,-0.9220,-0.7912,-0.6602,-0.5442,-0.5862,-0.5009,-0.1438]
+2000/20000 train_loss: 3.1182 train_time: 3.4m tok/s: 7715665
+2000/20000 poly_a coeff_n:11 coeff_min:-0.9217 coeff_mean:-0.6071 coeff_max:-0.1629 coeff_std:0.1994 layer_mean_min:-0.9217 layer_mean_mean:-0.6071 layer_mean_max:-0.1629 layer_mean_std:0.1994 layer_means:[-0.5655,-0.5942,-0.7345,-0.8389,-0.9217,-0.7506,-0.6369,-0.4435,-0.5598,-0.4699,-0.1629]
+layer_loop:enabled step:2020 frac:0.350 encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+2500/20000 train_loss: 3.0682 train_time: 4.6m tok/s: 7059960
+2500/20000 poly_a coeff_n:11 coeff_min:-1.0803 coeff_mean:-0.6597 coeff_max:-0.1933 coeff_std:0.2522 layer_mean_min:-1.0803 layer_mean_mean:-0.6597 layer_mean_max:-0.1933 layer_mean_std:0.2522 layer_means:[-0.5697,-0.5913,-0.7639,-1.0803,-1.0668,-0.8315,-0.6498,-0.4796,-0.5916,-0.4384,-0.1933]
+3000/20000 train_loss: 3.0175 train_time: 5.9m tok/s: 6677018
+3000/20000 poly_a coeff_n:11 coeff_min:-1.0239 coeff_mean:-0.6473 coeff_max:-0.1987 coeff_std:0.2384 layer_mean_min:-1.0239 layer_mean_mean:-0.6473 layer_mean_max:-0.1987 layer_mean_std:0.2384 layer_means:[-0.6736,-0.6670,-0.7934,-0.9952,-1.0239,-0.7819,-0.6012,-0.4388,-0.5577,-0.3884,-0.1987]
+3500/20000 train_loss: 2.9258 train_time: 7.2m tok/s: 6408830
+3500/20000 poly_a coeff_n:11 coeff_min:-0.9621 coeff_mean:-0.6204 coeff_max:-0.2068 coeff_std:0.2287 layer_mean_min:-0.9621 layer_mean_mean:-0.6204 layer_mean_max:-0.2068 layer_mean_std:0.2287 layer_means:[-0.7461,-0.6622,-0.7731,-0.9302,-0.9621,-0.7386,-0.5433,-0.3918,-0.5043,-0.3659,-0.2068]
+4000/20000 train_loss: 2.8993 train_time: 8.4m tok/s: 6231368
+4000/20000 poly_a coeff_n:11 coeff_min:-0.9022 coeff_mean:-0.6012 coeff_max:-0.2020 coeff_std:0.2255 layer_mean_min:-0.9022 layer_mean_mean:-0.6012 layer_mean_max:-0.2020 layer_mean_std:0.2255 layer_means:[-0.7902,-0.6954,-0.7819,-0.8769,-0.9022,-0.6870,-0.4987,-0.3725,-0.4642,-0.3419,-0.2020]
+4000/20000 val_loss: 2.8746 val_bpb: 1.1129
+4000/20000 poly_a coeff_n:11 coeff_min:-0.9022 coeff_mean:-0.6012 coeff_max:-0.2020 coeff_std:0.2255 layer_mean_min:-0.9022 layer_mean_mean:-0.6012 layer_mean_max:-0.2020 layer_mean_std:0.2255 layer_means:[-0.7902,-0.6954,-0.7819,-0.8769,-0.9022,-0.6870,-0.4987,-0.3725,-0.4642,-0.3419,-0.2020]
+4500/20000 train_loss: 2.8458 train_time: 9.7m tok/s: 6107006
+4500/20000 poly_a coeff_n:11 coeff_min:-0.8590 coeff_mean:-0.5763 coeff_max:-0.1895 coeff_std:0.2232 layer_mean_min:-0.8590 layer_mean_mean:-0.5763 layer_mean_max:-0.1895 layer_mean_std:0.2232 layer_means:[-0.7812,-0.6983,-0.7667,-0.8330,-0.8590,-0.6534,-0.4572,-0.3429,-0.4401,-0.3184,-0.1895]
+4557/20000 val_loss: 2.8136 val_bpb: 1.0892
+4557/20000 poly_a coeff_n:11 coeff_min:-0.8592 coeff_mean:-0.5764 coeff_max:-0.1893 coeff_std:0.2234 layer_mean_min:-0.8592 layer_mean_mean:-0.5764 layer_mean_max:-0.1893 layer_mean_std:0.2234 layer_means:[-0.7800,-0.7000,-0.7708,-0.8316,-0.8592,-0.6519,-0.4552,-0.3480,-0.4391,-0.3158,-0.1893]
+stopping_early: wallclock_cap train_time: 588034ms step: 4557/20000
+peak memory allocated: 39044 MiB reserved: 39126 MiB
+ema:applying EMA weights
+pre-quantization post-ema val_loss:2.81046215 val_bpb:1.08801748 eval_time:7546ms
+Serialized model: 135434383 bytes
+Code size: 69913 bytes
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 13.7s
+Quantized weights:
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int8): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp.poly_a_param, blocks.mlp_scale, blocks.resid_mix, skip_gates, skip_weights
+Serialized model quantized+brotli: 15977197 bytes
+Total submission size quantized+brotli: 16047110 bytes
+quantized val_loss:2.84018715 val_bpb:1.09952495 eval_time:25255ms
+quantized_sliding_window val_loss:2.79729160 val_bpb:1.08291875 eval_time:126518ms
