@@ -1549,7 +1549,9 @@ def activation_probe_lines(base_model, h, device, val_data):
     seq_len = min(h.eval_seq_len, probe_tokens)
     num_seqs = max(probe_tokens // seq_len, 1)
     usable = num_seqs * seq_len
-    tokens = val_data.val_tokens[: usable + 1].to(device, non_blocking=True)
+    tokens = val_data.val_tokens[: usable + 1].to(
+        device=device, dtype=torch.long, non_blocking=True
+    )
     probe_x = tokens[:-1].view(num_seqs, seq_len)
     captured = []
     hooks = []
