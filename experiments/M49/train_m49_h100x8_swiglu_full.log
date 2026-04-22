@@ -1,0 +1,168 @@
+Hyperparameters:
+  activation_probe_enabled: False
+  activation_probe_samples: 32768
+  activation_probe_tokens: 4096
+  adam_eps: 1e-08
+  adam_wd: 0.02
+  beta1: 0.9
+  beta2: 0.95
+  compressor: brotli
+  data_dir: ./data/
+  datasets_dir: ./data/datasets/fineweb10B_sp8192
+  distributed: True
+  ema_decay: 0.9965
+  embed_bits: 8
+  embed_clip_sigmas: 20.0
+  embed_lr: 0.6
+  embed_wd: 0.085
+  embedding_dim: 512
+  enable_looping_at: 0.35
+  etlb_clip: 3.0
+  etlb_enabled: False
+  etlb_lr: 0.05
+  etlb_steps: 5
+  eval_seq_len: 2048
+  eval_stride: 64
+  gptq_calibration_batches: 64
+  gptq_reserve_seconds: 12.0
+  grad_accum_steps: 1
+  grad_clip_norm: 0.3
+  head_lr: 0.008
+  is_main_process: True
+  iterations: 20000
+  ln_scale: True
+  local_rank: 0
+  logfile: logs/m49_h100x8_swiglu_full_s42.txt
+  logit_softcap: 30.0
+  loop_end: 5
+  loop_start: 3
+  matrix_bits: 6
+  matrix_clip_sigmas: 12.85
+  matrix_lr: 0.022
+  max_wallclock_seconds: 600.0
+  min_lr: 0.0
+  mlp_activation: swiglu
+  mlp_mult: 2.625
+  model_dim: 512
+  model_path: final_model.pt
+  muon_backend_steps: 5
+  muon_beta2: 0.95
+  muon_momentum: 0.99
+  muon_momentum_warmup_start: 0.92
+  muon_momentum_warmup_steps: 1500
+  muon_row_normalize: True
+  muon_wd: 0.095
+  num_heads: 8
+  num_kv_heads: 4
+  num_layers: 11
+  num_loops: 2
+  parallel_residual_start: 7
+  poly_a_init: 0.0
+  poly_a_max: 5.0
+  poly_a_per_channel: False
+  poly_leaky_slope: 0.5
+  qk_gain_init: 5.25
+  quantized_model_path: final_model.int6.ptz
+  rank: 0
+  rope_base: 10000.0
+  rope_dims: 16
+  rope_train_seq_len: 2048
+  run_id: m49_h100x8_swiglu_full_s42
+  scalar_lr: 0.02
+  seed: 42
+  skip_gates_enabled: True
+  sliding_window_enabled: True
+  spline_c_init: 0.0
+  spline_c_max: 2.0
+  spline_knots: (-1.0, -0.5, 0.0, 0.5, 1.0)
+  tie_embeddings: True
+  tied_embed_init_std: 0.005
+  tied_embed_lr: 0.03
+  tokenizer_path: ./data/tokenizers/fineweb_8192_bpe.model
+  train_batch_tokens: 786432
+  train_files: ./data/datasets/fineweb10B_sp8192/fineweb_train_*.bin
+  train_log_every: 200
+  train_seq_len: 2048
+  ttt_chunk_tokens: 32768
+  ttt_enabled: True
+  ttt_epochs: 3
+  ttt_lr: 0.005
+  ttt_momentum: 0.9
+  val_batch_tokens: 524288
+  val_files: ./data/datasets/fineweb10B_sp8192/fineweb_val_*.bin
+  val_loss_every: 1000000
+  vocab_size: 8192
+  warmdown_frac: 0.72
+  warmup_steps: 20
+  world_size: 8
+  xsa_last_n: 11
+train_shards: 64
+val_tokens: 40540160
+model_params:35584088
+mlp_activation:swiglu poly_a_init:0.0 poly_a_max:5.0 poly_a_per_channel:0 spline_c_init:0.0 spline_c_max:2.0 spline_knots:(-1.0, -0.5, 0.0, 0.5, 1.0) poly_leaky_slope:0.5 activation_probe_enabled:0 activation_probe_tokens:4096 activation_probe_samples:32768
+gptq:reserving 12s, effective=588000ms
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+0/20000 val_loss: 9.0088 val_bpb: 3.4876
+1/20000 train_loss: 9.0081 train_time: 0.0m tok/s: 8134414
+2/20000 train_loss: 12.3829 train_time: 0.0m tok/s: 8076361
+3/20000 train_loss: 10.6670 train_time: 0.0m tok/s: 7955794
+4/20000 train_loss: 9.1535 train_time: 0.0m tok/s: 7914030
+5/20000 train_loss: 8.2761 train_time: 0.0m tok/s: 7881669
+200/20000 train_loss: 3.6207 train_time: 0.3m tok/s: 7660831
+400/20000 train_loss: 3.4463 train_time: 0.7m tok/s: 7653152
+600/20000 train_loss: 3.2875 train_time: 1.0m tok/s: 7643306
+800/20000 train_loss: 3.2279 train_time: 1.4m tok/s: 7634137
+1000/20000 train_loss: 3.2741 train_time: 1.7m tok/s: 7628852
+1200/20000 train_loss: 3.1885 train_time: 2.1m tok/s: 7625090
+1400/20000 train_loss: 3.2210 train_time: 2.4m tok/s: 7623510
+1600/20000 train_loss: 3.1490 train_time: 2.8m tok/s: 7622810
+1800/20000 train_loss: 3.1618 train_time: 3.1m tok/s: 7622537
+layer_loop:enabled step:1995 frac:0.350 encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+2000/20000 train_loss: 3.3214 train_time: 3.4m tok/s: 7613816
+2200/20000 train_loss: 2.9844 train_time: 3.9m tok/s: 7301854
+2400/20000 train_loss: 2.9809 train_time: 4.5m tok/s: 7060880
+2600/20000 train_loss: 2.9156 train_time: 5.0m tok/s: 6869557
+2800/20000 train_loss: 3.0564 train_time: 5.5m tok/s: 6714282
+3000/20000 train_loss: 3.0228 train_time: 6.0m tok/s: 6579275
+3200/20000 train_loss: 2.9635 train_time: 6.5m tok/s: 6451269
+3400/20000 train_loss: 2.9730 train_time: 7.0m tok/s: 6360720
+3600/20000 train_loss: 2.9940 train_time: 7.5m tok/s: 6282216
+3800/20000 train_loss: 2.9379 train_time: 8.0m tok/s: 6213766
+4000/20000 train_loss: 2.8969 train_time: 8.5m tok/s: 6153341
+4200/20000 train_loss: 2.8639 train_time: 9.0m tok/s: 6099607
+4400/20000 train_loss: 2.8671 train_time: 9.5m tok/s: 6051718
+4508/20000 val_loss: 2.8199 val_bpb: 1.0917
+stopping_early: wallclock_cap train_time: 588147ms step: 4508/20000
+peak memory allocated: 38837 MiB reserved: 38988 MiB
+ema:applying EMA weights
+pre-quantization post-ema val_loss:2.81650700 val_bpb:1.09035763 eval_time:7055ms
+Serialized model: 133989241 bytes
+Code size: 77711 bytes
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 11.0s
+Quantized weights:
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int8): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, skip_gates, skip_weights
+Serialized model quantized+brotli: 15833082 bytes
+Total submission size quantized+brotli: 15910793 bytes
+quantized val_loss:2.84609066 val_bpb:1.10181039 eval_time:9072ms
+quantized_sliding_window val_loss:2.80319389 val_bpb:1.08520371 eval_time:125219ms
+ttt:start chunks=1238 ttt_lr=0.005 ttt_epochs=3
+quantized_ttt val_loss:2.79965583 val_bpb:1.08383402 eval_time:381108ms

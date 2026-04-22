@@ -6,8 +6,12 @@ Initial setup:
 - `train_gpt.py` is copied from `experiments/M48/train_gpt.py`
 - `M48` remains the univariate activation line
 - `M49` is reserved for bivariate activations such as `SwiGLU`-style baselines and follow-up gated variants
-- current default is a simple `SwiGLU` baseline with `MLP_MULT=2.625`, i.e. hidden width `1344` at `model_dim=512`
+- current default is a grouped bivariate KAN-style variant on top of the `SwiGLU` split
+- plain `SwiGLU` is still available with `MLP_ACTIVATION=swiglu`
+- default `MLP_MULT=2.625`, i.e. hidden width `1344` at `model_dim=512`
+- default grouped KAN settings use `KAN_GROUP_COUNT=16` and shared piecewise-linear `phi(u)` / `psi(g)` parameters per group
+- when saving the full-precision model, `swiglu_kan` also writes `final_model.kan_shapes.pt` with grouped KAN parameters plus per-group `u/g` activation statistics
 
 Recommended workflow:
-- First establish a simple `SwiGLU` baseline here
-- Then compare parameter-neutral and wallclock-matched gated variants against the current `leaky_relu^2` record line
+- First compare the grouped `swiglu_kan` branch against the existing plain `SwiGLU` baseline
+- Then decide whether richer bivariate shapes are helping before trying even less factorized two-input functions

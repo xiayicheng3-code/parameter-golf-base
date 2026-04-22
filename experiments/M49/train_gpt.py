@@ -41,13 +41,20 @@ class Hyperparameters:
     num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
     mlp_mult = float(os.environ.get("MLP_MULT", 2.625))
-    mlp_activation = os.environ.get("MLP_ACTIVATION", "swiglu")
+    mlp_activation = os.environ.get("MLP_ACTIVATION", "swiglu_kan")
     poly_a_init = float(os.environ.get("POLY_A_INIT", 0.0))
     poly_a_max = float(os.environ.get("POLY_A_MAX", 5.0))
     poly_a_per_channel = bool(int(os.environ.get("POLY_A_PER_CHANNEL", "0")))
     spline_c_init = float(os.environ.get("SPLINE_C_INIT", 0.0))
     spline_c_max = float(os.environ.get("SPLINE_C_MAX", 2.0))
     spline_knots = _parse_float_csv(os.environ.get("SPLINE_KNOTS", "-1,-0.5,0,0.5,1"))
+    kan_group_count = int(os.environ.get("KAN_GROUP_COUNT", 16))
+    kan_knots = _parse_float_csv(os.environ.get("KAN_KNOTS", "-1,-0.5,0,0.5,1"))
+    kan_value_linear_init = float(os.environ.get("KAN_VALUE_LINEAR_INIT", 1.0))
+    kan_value_bias_init = float(os.environ.get("KAN_VALUE_BIAS_INIT", 0.0))
+    kan_value_spline_init = float(os.environ.get("KAN_VALUE_SPLINE_INIT", 0.0))
+    kan_gate_linear_init = float(os.environ.get("KAN_GATE_LINEAR_INIT", 0.0))
+    kan_gate_spline_init = float(os.environ.get("KAN_GATE_SPLINE_INIT", 0.0))
     poly_leaky_slope = float(os.environ.get("POLY_LEAKY_SLOPE", 0.5))
     skip_gates_enabled = bool(int(os.environ.get("SKIP_GATES_ENABLED", "1")))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
@@ -426,19 +433,26 @@ class MLP(nn.Module):
         self,
         dim,
         mlp_mult,
-        activation="leaky_spline",
+        activation="swiglu_kan",
         poly_a_init=0.0,
         poly_a_max=5.0,
         poly_a_per_channel=False,
         spline_c_init=0.0,
         spline_c_max=2.0,
         spline_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
+        kan_group_count=16,
+        kan_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
+        kan_value_linear_init=1.0,
+        kan_value_bias_init=0.0,
+        kan_value_spline_init=0.0,
+        kan_gate_linear_init=0.0,
+        kan_gate_spline_init=0.0,
         leaky_slope=0.5,
     ):
         super().__init__()
         hidden = int(mlp_mult * dim)
         self.hidden_dim = hidden
-        self.bivariate_activation = activation in {"swiglu"}
+        self.bivariate_activation = activation in {"swiglu", "swiglu_kan"}
         fc_out_dim = 2 * hidden if self.bivariate_activation else hidden
         self.fc = CastedLinear(dim, fc_out_dim, bias=False)
         self.proj = CastedLinear(hidden, dim, bias=False)
@@ -449,9 +463,21 @@ class MLP(nn.Module):
         self.poly_a_param = None
         self.spline_c_max = spline_c_max
         self.spline_c_param = None
+        self.kan_group_count = 0
+        self.kan_group_size = 0
+        self.kan_value_linear_param = None
+        self.kan_value_bias_param = None
+        self.kan_value_spline_param = None
+        self.kan_gate_linear_param = None
+        self.kan_gate_spline_param = None
         self.register_buffer(
             "spline_knots",
             torch.tensor(spline_knots, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "kan_knots",
+            torch.tensor(kan_knots, dtype=torch.float32),
             persistent=False,
         )
         if activation in {
@@ -478,6 +504,45 @@ class MLP(nn.Module):
             self.spline_c_param = nn.Parameter(
                 torch.full((len(spline_knots),), init_param, dtype=torch.float32)
             )
+        if activation == "swiglu_kan":
+            if kan_group_count <= 0:
+                raise ValueError(
+                    f"kan_group_count must be positive, got {kan_group_count}"
+                )
+            if hidden % kan_group_count != 0:
+                raise ValueError(
+                    f"hidden_dim={hidden} must be divisible by kan_group_count={kan_group_count}"
+                )
+            self.kan_group_count = kan_group_count
+            self.kan_group_size = hidden // kan_group_count
+            num_knots = len(kan_knots)
+            self.kan_value_linear_param = nn.Parameter(
+                torch.full(
+                    (kan_group_count,), kan_value_linear_init, dtype=torch.float32
+                )
+            )
+            self.kan_value_bias_param = nn.Parameter(
+                torch.full((kan_group_count,), kan_value_bias_init, dtype=torch.float32)
+            )
+            self.kan_value_spline_param = nn.Parameter(
+                torch.full(
+                    (kan_group_count * num_knots,),
+                    kan_value_spline_init,
+                    dtype=torch.float32,
+                )
+            )
+            self.kan_gate_linear_param = nn.Parameter(
+                torch.full(
+                    (kan_group_count,), kan_gate_linear_init, dtype=torch.float32
+                )
+            )
+            self.kan_gate_spline_param = nn.Parameter(
+                torch.full(
+                    (kan_group_count * num_knots,),
+                    kan_gate_spline_init,
+                    dtype=torch.float32,
+                )
+            )
 
     def _poly_coeff(self, x):
         if self.poly_a_param is None:
@@ -503,6 +568,22 @@ class MLP(nn.Module):
             return None
         return self.spline_c_max * torch.tanh(self.spline_c_param.detach())
 
+    def swiglu_kan_tensors(self):
+        if self.kan_value_linear_param is None:
+            return None
+        num_knots = self.kan_knots.numel()
+        return {
+            "value_linear": self.kan_value_linear_param.detach(),
+            "value_bias": self.kan_value_bias_param.detach(),
+            "value_spline": self.kan_value_spline_param.detach().view(
+                self.kan_group_count, num_knots
+            ),
+            "gate_linear": self.kan_gate_linear_param.detach(),
+            "gate_spline": self.kan_gate_spline_param.detach().view(
+                self.kan_group_count, num_knots
+            ),
+        }
+
     def _spline_residual(self, preact):
         coeff = self._spline_coeff(preact)
         knots = self.spline_knots.to(device=preact.device, dtype=preact.dtype)
@@ -511,11 +592,45 @@ class MLP(nn.Module):
         )
         return (basis * coeff.view(*([1] * preact.ndim), coeff.numel())).sum(dim=-1)
 
+    def _grouped_kan_path(self, x, linear_param, bias_param, spline_param):
+        x_grouped = x.view(*x.shape[:-1], self.kan_group_count, self.kan_group_size)
+        prefix_dims = x_grouped.ndim - 2
+        linear = linear_param.to(dtype=x.dtype).view(
+            *([1] * prefix_dims), self.kan_group_count, 1
+        )
+        out = linear * x_grouped
+        if bias_param is not None:
+            bias = bias_param.to(dtype=x.dtype).view(
+                *([1] * prefix_dims), self.kan_group_count, 1
+            )
+            out = out + bias
+        knots = self.kan_knots.to(device=x.device, dtype=x.dtype)
+        coeff = spline_param.view(self.kan_group_count, knots.numel()).to(dtype=x.dtype)
+        coeff = coeff.view(*([1] * prefix_dims), self.kan_group_count, 1, knots.numel())
+        basis = F.relu(x_grouped.unsqueeze(-1) - knots)
+        out = out + (basis * coeff).sum(dim=-1)
+        return out.reshape_as(x)
+
     def forward(self, x):
         preact = self.fc(x)
         if self.activation == "swiglu":
             value, gate = preact.split(self.hidden_dim, dim=-1)
             hidden = value * F.silu(gate)
+        elif self.activation == "swiglu_kan":
+            value, gate = preact.split(self.hidden_dim, dim=-1)
+            phi_u = self._grouped_kan_path(
+                value,
+                self.kan_value_linear_param,
+                self.kan_value_bias_param,
+                self.kan_value_spline_param,
+            )
+            psi_g = F.silu(gate) + self._grouped_kan_path(
+                gate,
+                self.kan_gate_linear_param,
+                None,
+                self.kan_gate_spline_param,
+            )
+            hidden = phi_u * psi_g
         elif self.activation == "relu_poly2":
             hidden = F.relu(preact)
             hidden = hidden.square() + self._poly_coeff(hidden) * hidden
@@ -557,13 +672,20 @@ class Block(nn.Module):
         train_seq_len,
         layer_idx=0,
         ln_scale=False,
-        mlp_activation="leaky_spline",
+        mlp_activation="swiglu_kan",
         poly_a_init=0.0,
         poly_a_max=5.0,
         poly_a_per_channel=False,
         spline_c_init=0.0,
         spline_c_max=2.0,
         spline_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
+        kan_group_count=16,
+        kan_knots=(-1.0, -0.5, 0.0, 0.5, 1.0),
+        kan_value_linear_init=1.0,
+        kan_value_bias_init=0.0,
+        kan_value_spline_init=0.0,
+        kan_gate_linear_init=0.0,
+        kan_gate_spline_init=0.0,
         poly_leaky_slope=0.5,
     ):
         super().__init__()
@@ -582,6 +704,13 @@ class Block(nn.Module):
             spline_c_init=spline_c_init,
             spline_c_max=spline_c_max,
             spline_knots=spline_knots,
+            kan_group_count=kan_group_count,
+            kan_knots=kan_knots,
+            kan_value_linear_init=kan_value_linear_init,
+            kan_value_bias_init=kan_value_bias_init,
+            kan_value_spline_init=kan_value_spline_init,
+            kan_gate_linear_init=kan_gate_linear_init,
+            kan_gate_spline_init=kan_gate_spline_init,
             leaky_slope=poly_leaky_slope,
         )
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
@@ -650,6 +779,13 @@ class GPT(nn.Module):
                     spline_c_init=h.spline_c_init,
                     spline_c_max=h.spline_c_max,
                     spline_knots=h.spline_knots,
+                    kan_group_count=h.kan_group_count,
+                    kan_knots=h.kan_knots,
+                    kan_value_linear_init=h.kan_value_linear_init,
+                    kan_value_bias_init=h.kan_value_bias_init,
+                    kan_value_spline_init=h.kan_value_spline_init,
+                    kan_gate_linear_init=h.kan_gate_linear_init,
+                    kan_gate_spline_init=h.kan_gate_spline_init,
                     poly_leaky_slope=h.poly_leaky_slope,
                 )
                 for i in range(h.num_layers)
@@ -773,8 +909,71 @@ class GPT(nn.Module):
             f"layer_coeffs:[{layer_coeffs_str}]"
         )
 
+    def swiglu_kan_log_line(self):
+        value_linear = []
+        value_bias = []
+        value_spline = []
+        gate_linear = []
+        gate_spline = []
+        for block in self.blocks:
+            tensors = block.mlp.swiglu_kan_tensors()
+            if tensors is None:
+                continue
+            value_linear.append(tensors["value_linear"].float())
+            value_bias.append(tensors["value_bias"].float())
+            value_spline.append(tensors["value_spline"].float())
+            gate_linear.append(tensors["gate_linear"].float())
+            gate_spline.append(tensors["gate_spline"].float())
+        if not value_linear:
+            return None
+        value_linear_t = torch.stack(value_linear)
+        value_bias_t = torch.stack(value_bias)
+        value_spline_t = torch.stack(value_spline)
+        gate_linear_t = torch.stack(gate_linear)
+        gate_spline_t = torch.stack(gate_spline)
+        value_knot_means = value_spline_t.mean(dim=(0, 1))
+        gate_knot_means = gate_spline_t.mean(dim=(0, 1))
+        layer_value_lin = value_linear_t.mean(dim=1)
+        layer_value_bias = value_bias_t.mean(dim=1)
+        layer_gate_lin = gate_linear_t.mean(dim=1)
+        layer_value_spline_l1 = value_spline_t.abs().mean(dim=(1, 2))
+        layer_gate_spline_l1 = gate_spline_t.abs().mean(dim=(1, 2))
+        value_knot_str = ",".join(f"{x:.4f}" for x in value_knot_means.cpu().tolist())
+        gate_knot_str = ",".join(f"{x:.4f}" for x in gate_knot_means.cpu().tolist())
+        layer_value_lin_str = ",".join(
+            f"{x:.4f}" for x in layer_value_lin.cpu().tolist()
+        )
+        layer_value_bias_str = ",".join(
+            f"{x:.4f}" for x in layer_value_bias.cpu().tolist()
+        )
+        layer_gate_lin_str = ",".join(f"{x:.4f}" for x in layer_gate_lin.cpu().tolist())
+        layer_value_spline_l1_str = ",".join(
+            f"{x:.4f}" for x in layer_value_spline_l1.cpu().tolist()
+        )
+        layer_gate_spline_l1_str = ",".join(
+            f"{x:.4f}" for x in layer_gate_spline_l1.cpu().tolist()
+        )
+        return (
+            f"swiglu_kan groups:{value_linear_t.size(1)} knots:{value_spline_t.size(2)} "
+            f"value_lin_mean:{value_linear_t.mean().item():.4f} "
+            f"value_bias_mean:{value_bias_t.mean().item():.4f} "
+            f"gate_lin_mean:{gate_linear_t.mean().item():.4f} "
+            f"value_spline_abs_mean:{value_spline_t.abs().mean().item():.4f} "
+            f"gate_spline_abs_mean:{gate_spline_t.abs().mean().item():.4f} "
+            f"value_knot_means:[{value_knot_str}] gate_knot_means:[{gate_knot_str}] "
+            f"layer_value_lin:[{layer_value_lin_str}] "
+            f"layer_value_bias:[{layer_value_bias_str}] "
+            f"layer_gate_lin:[{layer_gate_lin_str}] "
+            f"layer_value_spline_l1:[{layer_value_spline_l1_str}] "
+            f"layer_gate_spline_l1:[{layer_gate_spline_l1_str}]"
+        )
+
     def activation_log_line(self):
-        return self.spline_c_log_line() or self.poly_a_log_line()
+        return (
+            self.swiglu_kan_log_line()
+            or self.spline_c_log_line()
+            or self.poly_a_log_line()
+        )
 
     def forward_logits(self, input_ids):
         x = self.tok_emb(input_ids)
@@ -1247,13 +1446,16 @@ def _decompress(data, compressor):
     return raw
 
 
-def serialize(h, base_model, code):
+def serialize(h, base_model, val_data, code):
     code_bytes = len(code.encode("utf-8"))
     if h.is_main_process:
         torch.save(base_model.state_dict(), h.model_path)
         model_bytes = os.path.getsize(h.model_path)
         log(f"Serialized model: {model_bytes} bytes")
         log(f"Code size: {code_bytes} bytes")
+        export_swiglu_kan_sidecar(
+            h, base_model, torch.device("cuda", h.local_rank), val_data
+        )
     sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
     device = torch.device("cuda", h.local_rank)
     log("GPTQ:collecting Hessians from calibration data...")
@@ -1556,6 +1758,166 @@ def _sample_flat_tensor(tensor, max_samples):
     return flat[::stride][:max_samples].cpu()
 
 
+def _sample_grouped_tensor(tensor, group_count, group_size, max_samples):
+    grouped = tensor.detach().float().reshape(-1, group_count, group_size)
+    grouped = grouped.permute(1, 0, 2).reshape(group_count, -1)
+    if grouped.size(1) <= max_samples:
+        return grouped.cpu()
+    stride = max(grouped.size(1) // max_samples, 1)
+    return grouped[:, ::stride][:, :max_samples].cpu()
+
+
+def _kan_phi_from_points(points, linear, bias, spline, knots):
+    return (
+        linear[:, None] * points
+        + bias[:, None]
+        + (
+            F.relu(points.unsqueeze(-1) - knots.view(1, 1, -1)) * spline[:, None, :]
+        ).sum(dim=-1)
+    )
+
+
+def _kan_psi_from_points(points, linear, spline, knots):
+    return (
+        F.silu(points)
+        + linear[:, None] * points
+        + (
+            F.relu(points.unsqueeze(-1) - knots.view(1, 1, -1)) * spline[:, None, :]
+        ).sum(dim=-1)
+    )
+
+
+def export_swiglu_kan_sidecar(h, base_model, device, val_data):
+    if h.mlp_activation != "swiglu_kan" or not h.is_main_process:
+        return None
+    probe_tokens = min(
+        h.activation_probe_tokens, max(0, val_data.val_tokens.numel() - 1)
+    )
+    if probe_tokens <= 0:
+        return None
+    seq_len = min(h.eval_seq_len, probe_tokens)
+    num_seqs = max(probe_tokens // seq_len, 1)
+    usable = num_seqs * seq_len
+    tokens = val_data.val_tokens[: usable + 1].to(
+        device=device, dtype=torch.long, non_blocking=True
+    )
+    probe_x = tokens[:-1].view(num_seqs, seq_len)
+    captured = []
+    hooks = []
+
+    def make_hook(layer_idx, mlp):
+        def hook(_module, _inputs, output):
+            value, gate = output.split(mlp.hidden_dim, dim=-1)
+            captured.append(
+                {
+                    "layer_idx": layer_idx,
+                    "u_samples": _sample_grouped_tensor(
+                        value,
+                        mlp.kan_group_count,
+                        mlp.kan_group_size,
+                        h.activation_probe_samples,
+                    ),
+                    "g_samples": _sample_grouped_tensor(
+                        gate,
+                        mlp.kan_group_count,
+                        mlp.kan_group_size,
+                        h.activation_probe_samples,
+                    ),
+                }
+            )
+
+        return hook
+
+    for layer_idx, block in enumerate(base_model.blocks):
+        if block.mlp.activation == "swiglu_kan":
+            hooks.append(
+                block.mlp.fc.register_forward_hook(make_hook(layer_idx, block.mlp))
+            )
+    was_training = base_model.training
+    try:
+        base_model.eval()
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
+                base_model.forward_logits(probe_x)
+    finally:
+        for hook in hooks:
+            hook.remove()
+        if was_training:
+            base_model.train()
+
+    quantile_levels = torch.tensor(
+        [0.01, 0.10, 0.25, 0.50, 0.75, 0.90, 0.99], dtype=torch.float32
+    )
+    quantile_names = ("p01", "p10", "p25", "p50", "p75", "p90", "p99")
+    occurrence_counts = collections.defaultdict(int)
+    layer_exports = []
+    for entry in captured:
+        layer_idx = entry["layer_idx"]
+        occurrence = occurrence_counts[layer_idx]
+        occurrence_counts[layer_idx] += 1
+        mlp = base_model.blocks[layer_idx].mlp
+        tensors = mlp.swiglu_kan_tensors()
+        if tensors is None:
+            continue
+        u_samples = entry["u_samples"]
+        g_samples = entry["g_samples"]
+        u_quantiles = torch.quantile(u_samples, quantile_levels, dim=1).transpose(0, 1)
+        g_quantiles = torch.quantile(g_samples, quantile_levels, dim=1).transpose(0, 1)
+        value_linear = tensors["value_linear"].float().cpu()
+        value_bias = tensors["value_bias"].float().cpu()
+        value_spline = tensors["value_spline"].float().cpu()
+        gate_linear = tensors["gate_linear"].float().cpu()
+        gate_spline = tensors["gate_spline"].float().cpu()
+        knots = mlp.kan_knots.float().cpu()
+        layer_exports.append(
+            {
+                "layer_idx": layer_idx,
+                "occurrence": occurrence,
+                "value_linear": value_linear,
+                "value_bias": value_bias,
+                "value_spline": value_spline,
+                "gate_linear": gate_linear,
+                "gate_spline": gate_spline,
+                "u_stats": {
+                    "n": int(u_samples.size(1)),
+                    "mean": u_samples.mean(dim=1),
+                    "std": u_samples.std(dim=1, unbiased=False),
+                    "quantiles": u_quantiles,
+                    "phi_at_quantiles": _kan_phi_from_points(
+                        u_quantiles, value_linear, value_bias, value_spline, knots
+                    ),
+                },
+                "g_stats": {
+                    "n": int(g_samples.size(1)),
+                    "mean": g_samples.mean(dim=1),
+                    "std": g_samples.std(dim=1, unbiased=False),
+                    "quantiles": g_quantiles,
+                    "psi_at_quantiles": _kan_psi_from_points(
+                        g_quantiles, gate_linear, gate_spline, knots
+                    ),
+                },
+            }
+        )
+
+    sidecar = {
+        "mlp_activation": h.mlp_activation,
+        "hidden_dim": int(base_model.blocks[0].mlp.hidden_dim),
+        "group_count": int(base_model.blocks[0].mlp.kan_group_count),
+        "group_size": int(base_model.blocks[0].mlp.kan_group_size),
+        "kan_knots": base_model.blocks[0].mlp.kan_knots.float().cpu(),
+        "quantile_names": quantile_names,
+        "quantile_levels": quantile_levels,
+        "probe_tokens": int(usable),
+        "probe_samples_per_group": int(h.activation_probe_samples),
+        "layers": layer_exports,
+    }
+    model_path = Path(h.model_path)
+    sidecar_path = model_path.with_name(f"{model_path.stem}.kan_shapes.pt")
+    torch.save(sidecar, sidecar_path)
+    log(f"Serialized KAN sidecar: {sidecar_path} ({sidecar_path.stat().st_size} bytes)")
+    return sidecar_path
+
+
 def activation_probe_lines(base_model, h, device, val_data):
     if not h.activation_probe_enabled or not h.is_main_process:
         return []
@@ -1622,7 +1984,13 @@ def train_model(h, device, val_data):
         f"mlp_activation:{h.mlp_activation} poly_a_init:{h.poly_a_init} "
         f"poly_a_max:{h.poly_a_max} poly_a_per_channel:{int(h.poly_a_per_channel)} "
         f"spline_c_init:{h.spline_c_init} spline_c_max:{h.spline_c_max} "
-        f"spline_knots:{h.spline_knots} poly_leaky_slope:{h.poly_leaky_slope} "
+        f"spline_knots:{h.spline_knots} kan_group_count:{h.kan_group_count} "
+        f"kan_knots:{h.kan_knots} kan_value_linear_init:{h.kan_value_linear_init} "
+        f"kan_value_bias_init:{h.kan_value_bias_init} "
+        f"kan_value_spline_init:{h.kan_value_spline_init} "
+        f"kan_gate_linear_init:{h.kan_gate_linear_init} "
+        f"kan_gate_spline_init:{h.kan_gate_spline_init} "
+        f"poly_leaky_slope:{h.poly_leaky_slope} "
         f"activation_probe_enabled:{int(h.activation_probe_enabled)} "
         f"activation_probe_tokens:{h.activation_probe_tokens} "
         f"activation_probe_samples:{h.activation_probe_samples}"
@@ -1830,7 +2198,7 @@ def train_and_eval(h, device):
     timed_eval(
         "pre-quantization post-ema", eval_val, h, device, val_data, compiled_model
     )
-    serialize(h, base_model, Path(__file__).read_text(encoding="utf-8"))
+    serialize(h, base_model, val_data, Path(__file__).read_text(encoding="utf-8"))
     if h.distributed:
         dist.barrier()
     eval_model = deserialize(h, device)
