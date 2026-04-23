@@ -37,6 +37,7 @@ class Hyperparameters:
     rope_train_seq_len = int(os.environ.get("ROPE_TRAIN_SEQ_LEN", 2048))
     ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 5.0))
+    kv_source_mode = os.environ.get("KV_SOURCE_MODE", "pick_first")
     num_loops = int(os.environ.get("NUM_LOOPS", 2))
     loop_start = int(os.environ.get("LOOP_START", 3))
     loop_end = int(os.environ.get("LOOP_END", 5))
@@ -348,7 +349,14 @@ def apply_rotary_emb(x, cos, sin, rope_dims=0):
 class CausalSelfAttention(nn.Module):
 
     def __init__(
-        self, dim, num_heads, num_kv_heads, rope_base, qk_gain_init, train_seq_len
+        self,
+        dim,
+        num_heads,
+        num_kv_heads,
+        rope_base,
+        qk_gain_init,
+        train_seq_len,
+        kv_source_mode="pick_first",
     ):
         super().__init__()
         if dim % num_heads != 0:
@@ -358,6 +366,7 @@ class CausalSelfAttention(nn.Module):
         self.num_heads = num_heads
         self.num_kv_heads = num_kv_heads
         self.q_per_kv = num_heads // num_kv_heads
+        self.kv_source_mode = kv_source_mode
         self.head_dim = dim // num_heads
         if self.head_dim % 2 != 0:
             raise ValueError("head_dim must be even for RoPE")
@@ -369,7 +378,21 @@ class CausalSelfAttention(nn.Module):
         )
         self.rope_dims = 0
         self.rotary = Rotary(self.head_dim, base=rope_base, train_seq_len=train_seq_len)
+        if kv_source_mode not in ("pick_first", "rotate_first"):
+            raise ValueError(
+                f"Unsupported KV_SOURCE_MODE={kv_source_mode!r}; expected pick_first or rotate_first"
+            )
         self.use_xsa = False
+        source_group_offset = 0 if kv_source_mode == "pick_first" else 1
+        kv_source_heads = [
+            ((g + source_group_offset) % self.num_kv_heads) * self.q_per_kv
+            for g in range(self.num_kv_heads)
+        ]
+        self.register_buffer(
+            "kv_source_heads",
+            torch.tensor(kv_source_heads, dtype=torch.long),
+            persistent=False,
+        )
 
     def _xsa_efficient(self, y, v):
         B, T, H, D = y.shape
@@ -383,10 +406,7 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x):
         bsz, seqlen, dim = x.shape
         q_latent = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim)
-        # Each KV group reuses the first query head as its shared key/value source.
-        kv = q_latent.reshape(
-            bsz, seqlen, self.num_kv_heads, self.q_per_kv, self.head_dim
-        ).select(3, 0).contiguous()
+        kv = q_latent.index_select(2, self.kv_source_heads)
         q = F.rms_norm(q_latent, (q_latent.size(-1),))
         k = F.rms_norm(kv, (kv.size(-1),))
         v = kv
@@ -425,6 +445,7 @@ class Block(nn.Module):
         rope_base,
         qk_gain_init,
         train_seq_len,
+        kv_source_mode="pick_first",
         layer_idx=0,
         ln_scale=False,
     ):
@@ -432,7 +453,13 @@ class Block(nn.Module):
         self.attn_norm = RMSNorm()
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(
-            dim, num_heads, num_kv_heads, rope_base, qk_gain_init, train_seq_len
+            dim,
+            num_heads,
+            num_kv_heads,
+            rope_base,
+            qk_gain_init,
+            train_seq_len,
+            kv_source_mode,
         )
         self.mlp = MLP(dim, mlp_mult)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
@@ -492,6 +519,7 @@ class GPT(nn.Module):
                     h.rope_base,
                     h.qk_gain_init,
                     h.train_seq_len,
+                    h.kv_source_mode,
                     layer_idx=i,
                     ln_scale=h.ln_scale,
                 )
