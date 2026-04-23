@@ -11,6 +11,7 @@ Initial setup:
 - default `MLP_MULT=2.625`, i.e. hidden width `1344` at `model_dim=512`
 - default grouped KAN settings use `KAN_GROUP_COUNT=16` and shared piecewise-linear `phi(u)` / `psi(g)` parameters per group
 - when saving the full-precision model, `swiglu_kan` also writes `final_model.kan_shapes.pt` with grouped KAN parameters plus per-group `u/g` activation statistics
+- use `visualize_kan_shapes.py` to plot one selected layer/occurrence with overlay lines and optional heatmaps, normalized by `f(p75)`
 
 Recommended workflow:
 - First compare the grouped `swiglu_kan` branch against the existing plain `SwiGLU` baseline

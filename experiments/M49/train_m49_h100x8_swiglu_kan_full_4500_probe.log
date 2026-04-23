@@ -1,0 +1,241 @@
+Hyperparameters:
+  activation_probe_enabled: True
+  activation_probe_samples: 65536
+  activation_probe_tokens: 16384
+  adam_eps: 1e-08
+  adam_wd: 0.02
+  beta1: 0.9
+  beta2: 0.95
+  compressor: brotli
+  data_dir: ./data/
+  datasets_dir: ./data/datasets/fineweb10B_sp8192
+  distributed: True
+  ema_decay: 0.9965
+  embed_bits: 8
+  embed_clip_sigmas: 20.0
+  embed_lr: 0.6
+  embed_wd: 0.085
+  embedding_dim: 512
+  enable_looping_at: 0.35
+  etlb_clip: 3.0
+  etlb_enabled: False
+  etlb_lr: 0.05
+  etlb_steps: 5
+  eval_seq_len: 2048
+  eval_stride: 64
+  gptq_calibration_batches: 64
+  gptq_reserve_seconds: 12.0
+  grad_accum_steps: 1
+  grad_clip_norm: 0.3
+  head_lr: 0.008
+  is_main_process: True
+  iterations: 4500
+  kan_gate_linear_init: 0.0
+  kan_gate_spline_init: 0.0
+  kan_group_count: 16
+  kan_knots: (-1.0, -0.5, 0.0, 0.5, 1.0)
+  kan_value_bias_init: 0.0
+  kan_value_linear_init: 1.0
+  kan_value_spline_init: 0.0
+  ln_scale: True
+  local_rank: 0
+  logfile: logs/m49_h100x8_swiglu_kan_full_4500_probe_s42.txt
+  logit_softcap: 30.0
+  loop_end: 5
+  loop_start: 3
+  matrix_bits: 6
+  matrix_clip_sigmas: 12.85
+  matrix_lr: 0.022
+  max_wallclock_seconds: 900.0
+  min_lr: 0.0
+  mlp_activation: swiglu_kan
+  mlp_mult: 2.625
+  model_dim: 512
+  model_path: final_model.pt
+  muon_backend_steps: 5
+  muon_beta2: 0.95
+  muon_momentum: 0.99
+  muon_momentum_warmup_start: 0.92
+  muon_momentum_warmup_steps: 1500
+  muon_row_normalize: True
+  muon_wd: 0.095
+  num_heads: 8
+  num_kv_heads: 4
+  num_layers: 11
+  num_loops: 2
+  parallel_residual_start: 7
+  poly_a_init: 0.0
+  poly_a_max: 5.0
+  poly_a_per_channel: False
+  poly_leaky_slope: 0.5
+  qk_gain_init: 5.25
+  quantized_model_path: final_model.int6.ptz
+  rank: 0
+  rope_base: 10000.0
+  rope_dims: 16
+  rope_train_seq_len: 2048
+  run_id: m49_h100x8_swiglu_kan_full_4500_probe_s42
+  scalar_lr: 0.02
+  seed: 42
+  skip_gates_enabled: True
+  sliding_window_enabled: True
+  spline_c_init: 0.0
+  spline_c_max: 2.0
+  spline_knots: (-1.0, -0.5, 0.0, 0.5, 1.0)
+  tie_embeddings: True
+  tied_embed_init_std: 0.005
+  tied_embed_lr: 0.03
+  tokenizer_path: ./data/tokenizers/fineweb_8192_bpe.model
+  train_batch_tokens: 786432
+  train_files: ./data/datasets/fineweb10B_sp8192/fineweb_train_*.bin
+  train_log_every: 250
+  train_seq_len: 2048
+  ttt_chunk_tokens: 32768
+  ttt_enabled: False
+  ttt_epochs: 3
+  ttt_lr: 0.005
+  ttt_momentum: 0.9
+  val_batch_tokens: 524288
+  val_files: ./data/datasets/fineweb10B_sp8192/fineweb_val_*.bin
+  val_loss_every: 2250
+  vocab_size: 8192
+  warmdown_frac: 0.72
+  warmup_steps: 20
+  world_size: 8
+  xsa_last_n: 11
+train_shards: 64
+val_tokens: 40540160
+model_params:35586376
+mlp_activation:swiglu_kan poly_a_init:0.0 poly_a_max:5.0 poly_a_per_channel:0 spline_c_init:0.0 spline_c_max:2.0 spline_knots:(-1.0, -0.5, 0.0, 0.5, 1.0) kan_group_count:16 kan_knots:(-1.0, -0.5, 0.0, 0.5, 1.0) kan_value_linear_init:1.0 kan_value_bias_init:0.0 kan_value_spline_init:0.0 kan_gate_linear_init:0.0 kan_gate_spline_init:0.0 poly_leaky_slope:0.5 activation_probe_enabled:1 activation_probe_tokens:16384 activation_probe_samples:65536
+activation_init swiglu_kan groups:16 knots:5 value_lin_mean:1.0000 value_bias_mean:0.0000 gate_lin_mean:0.0000 value_spline_abs_mean:0.0000 gate_spline_abs_mean:0.0000 value_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] gate_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_lin:[1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000] layer_value_bias:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_lin:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+gptq:reserving 12s, effective=888000ms
+warmup_step: 1/20
+warmup_step: 2/20
+warmup_step: 3/20
+warmup_step: 4/20
+warmup_step: 5/20
+warmup_step: 6/20
+warmup_step: 10/20
+warmup_step: 20/20
+loop_warmup:enabled encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+loop_warmup_step: 1/20
+loop_warmup_step: 2/20
+loop_warmup_step: 3/20
+loop_warmup_step: 4/20
+loop_warmup_step: 5/20
+loop_warmup_step: 6/20
+loop_warmup_step: 10/20
+loop_warmup_step: 20/20
+0/4500 val_loss: 9.0088 val_bpb: 3.4876
+0/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.0000 value_bias_mean:0.0000 gate_lin_mean:0.0000 value_spline_abs_mean:0.0000 gate_spline_abs_mean:0.0000 value_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] gate_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_lin:[1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000] layer_value_bias:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_lin:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+0/4500 activation_probe layer:0 n:65536 p01:-1.0938 p10:-0.6289 p50:-0.0364 p90:0.5625 p99:0.9961
+0/4500 activation_probe layer:1 n:65536 p01:-0.7266 p10:-0.3672 p50:-0.0267 p90:0.3965 p99:0.7148
+0/4500 activation_probe layer:2 n:65536 p01:-0.6094 p10:-0.3027 p50:0.0105 p90:0.3281 p99:0.5938
+0/4500 activation_probe layer:3 n:65536 p01:-0.6367 p10:-0.2812 p50:-0.0016 p90:0.2578 p99:0.4844
+0/4500 activation_probe layer:4 n:65536 p01:-0.4434 p10:-0.2598 p50:-0.0117 p90:0.2373 p99:0.4707
+0/4500 activation_probe layer:5 n:65536 p01:-0.3828 p10:-0.2021 p50:-0.0031 p90:0.2246 p99:0.4297
+0/4500 activation_probe layer:6 n:65536 p01:-0.3724 p10:-0.2197 p50:-0.0128 p90:0.2178 p99:0.3887
+0/4500 activation_probe layer:7 n:65536 p01:-0.3457 p10:-0.1885 p50:-0.0145 p90:0.1816 p99:0.3633
+0/4500 activation_probe layer:8 n:65536 p01:-0.3359 p10:-0.1875 p50:-0.0097 p90:0.1953 p99:0.3359
+0/4500 activation_probe layer:9 n:65536 p01:-0.3301 p10:-0.1846 p50:0.0062 p90:0.1719 p99:0.3027
+0/4500 activation_probe layer:10 n:65536 p01:-0.2793 p10:-0.1748 p50:-0.0098 p90:0.1670 p99:0.2988
+1/4500 train_loss: 9.0081 train_time: 0.0m tok/s: 5130112
+1/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.9996 value_bias_mean:0.0000 gate_lin_mean:0.0000 value_spline_abs_mean:0.0000 gate_spline_abs_mean:0.0000 value_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] gate_knot_means:[0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_lin:[0.9996,0.9996,0.9996,0.9996,0.9996,0.9996,0.9996,0.9996,0.9996,0.9996,0.9996] layer_value_bias:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_lin:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_value_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000] layer_gate_spline_l1:[0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000]
+2/4500 train_loss: 12.3829 train_time: 0.0m tok/s: 5129778
+2/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.0135 value_bias_mean:0.0002 gate_lin_mean:0.0145 value_spline_abs_mean:0.0095 gate_spline_abs_mean:0.0100 value_knot_means:[0.0076,0.0108,0.0139,0.0042,0.0014] gate_knot_means:[0.0131,0.0141,0.0144,0.0050,0.0015] layer_value_lin:[1.0139,1.0139,1.0138,1.0135,1.0129,1.0128,1.0132,1.0135,1.0137,1.0138,1.0138] layer_value_bias:[-0.0036,0.0018,0.0019,0.0019,0.0015,0.0013,0.0015,-0.0036,-0.0018,0.0036,-0.0021] layer_gate_lin:[0.0147,0.0147,0.0146,0.0145,0.0142,0.0141,0.0144,0.0145,0.0146,0.0146,0.0146] layer_value_spline_l1:[0.0145,0.0118,0.0107,0.0093,0.0081,0.0080,0.0082,0.0082,0.0086,0.0088,0.0087] layer_gate_spline_l1:[0.0146,0.0124,0.0113,0.0102,0.0090,0.0087,0.0087,0.0089,0.0088,0.0089,0.0088]
+3/4500 train_loss: 10.6643 train_time: 0.0m tok/s: 5109946
+3/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.0271 value_bias_mean:0.0008 gate_lin_mean:0.0287 value_spline_abs_mean:0.0183 gate_spline_abs_mean:0.0199 value_knot_means:[0.0172,0.0240,0.0279,0.0099,0.0033] gate_knot_means:[0.0271,0.0283,0.0285,0.0119,0.0035] layer_value_lin:[1.0277,1.0276,1.0274,1.0271,1.0263,1.0263,1.0268,1.0272,1.0273,1.0274,1.0275] layer_value_bias:[-0.0010,0.0035,0.0053,0.0001,0.0060,-0.0012,0.0025,-0.0035,-0.0075,0.0045,0.0005] layer_gate_lin:[0.0290,0.0290,0.0288,0.0286,0.0282,0.0282,0.0285,0.0287,0.0287,0.0288,0.0289] layer_value_spline_l1:[0.0286,0.0231,0.0212,0.0185,0.0163,0.0153,0.0162,0.0152,0.0162,0.0157,0.0147] layer_gate_spline_l1:[0.0289,0.0250,0.0227,0.0208,0.0187,0.0175,0.0173,0.0168,0.0164,0.0177,0.0175]
+4/4500 train_loss: 9.1459 train_time: 0.0m tok/s: 5104184
+4/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.0427 value_bias_mean:0.0035 gate_lin_mean:0.0448 value_spline_abs_mean:0.0286 gate_spline_abs_mean:0.0315 value_knot_means:[0.0268,0.0367,0.0436,0.0170,0.0056] gate_knot_means:[0.0426,0.0440,0.0444,0.0204,0.0060] layer_value_lin:[1.0434,1.0432,1.0430,1.0426,1.0416,1.0417,1.0422,1.0427,1.0428,1.0430,1.0431] layer_value_bias:[0.0048,0.0058,0.0111,0.0011,0.0104,-0.0013,0.0062,-0.0034,-0.0092,0.0087,0.0037] layer_gate_lin:[0.0453,0.0451,0.0450,0.0447,0.0441,0.0442,0.0446,0.0448,0.0448,0.0449,0.0452] layer_value_spline_l1:[0.0444,0.0367,0.0333,0.0297,0.0258,0.0243,0.0250,0.0238,0.0247,0.0244,0.0229] layer_gate_spline_l1:[0.0450,0.0398,0.0356,0.0331,0.0298,0.0280,0.0273,0.0269,0.0261,0.0277,0.0271]
+5/4500 train_loss: 8.2625 train_time: 0.0m tok/s: 5093112
+5/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.0588 value_bias_mean:0.0072 gate_lin_mean:0.0617 value_spline_abs_mean:0.0397 gate_spline_abs_mean:0.0437 value_knot_means:[0.0362,0.0493,0.0599,0.0250,0.0080] gate_knot_means:[0.0585,0.0603,0.0610,0.0300,0.0088] layer_value_lin:[1.0597,1.0593,1.0591,1.0586,1.0575,1.0577,1.0583,1.0589,1.0590,1.0592,1.0594] layer_value_bias:[0.0125,0.0092,0.0178,0.0025,0.0152,-0.0002,0.0109,-0.0024,-0.0076,0.0141,0.0070] layer_gate_lin:[0.0622,0.0620,0.0618,0.0614,0.0607,0.0610,0.0614,0.0617,0.0618,0.0619,0.0623] layer_value_spline_l1:[0.0608,0.0512,0.0459,0.0416,0.0360,0.0339,0.0344,0.0329,0.0339,0.0338,0.0322] layer_gate_spline_l1:[0.0618,0.0556,0.0490,0.0459,0.0416,0.0392,0.0380,0.0379,0.0365,0.0383,0.0372]
+250/4500 train_loss: 3.4742 train_time: 0.6m tok/s: 5060354
+250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.4456 value_bias_mean:-0.1719 gate_lin_mean:0.6237 value_spline_abs_mean:0.2507 gate_spline_abs_mean:0.2862 value_knot_means:[0.0231,0.1570,0.3997,0.4551,-0.0185] gate_knot_means:[-0.1140,0.0440,0.3675,0.5561,0.1642] layer_value_lin:[0.8626,1.0027,1.1946,1.3278,1.5507,1.7413,1.6409,1.5960,1.5947,1.5461,1.8444] layer_value_bias:[0.0174,-0.0746,-0.1417,-0.1886,-0.2633,-0.3357,-0.2434,-0.2116,-0.1625,-0.1285,-0.1581] layer_gate_lin:[-0.0111,0.1976,0.3722,0.5126,0.7384,0.9319,0.8484,0.8043,0.7521,0.7021,1.0119] layer_value_spline_l1:[0.0688,0.0859,0.1754,0.2025,0.2966,0.3491,0.3038,0.3207,0.3049,0.2962,0.3542] layer_gate_spline_l1:[0.0687,0.1440,0.2287,0.2566,0.3491,0.3949,0.3644,0.3599,0.3556,0.3031,0.3228]
+500/4500 train_loss: 3.3043 train_time: 1.3m tok/s: 5047414
+500/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.2630 value_bias_mean:-0.1519 gate_lin_mean:0.5432 value_spline_abs_mean:0.2058 gate_spline_abs_mean:0.2319 value_knot_means:[-0.0012,0.1124,0.3006,0.3124,-0.1436] gate_knot_means:[-0.1354,0.0026,0.2459,0.3705,0.1559] layer_value_lin:[0.7296,0.8513,1.0159,1.1238,1.3310,1.5092,1.4162,1.3717,1.3635,1.3350,1.8458] layer_value_bias:[0.0386,-0.0508,-0.1279,-0.1633,-0.2335,-0.3115,-0.2148,-0.1789,-0.1298,-0.1048,-0.1939] layer_gate_lin:[0.0078,0.1418,0.3026,0.4106,0.6296,0.7973,0.7076,0.6686,0.6257,0.5910,1.0926] layer_value_spline_l1:[0.0743,0.0743,0.1359,0.1604,0.2247,0.2802,0.2367,0.2381,0.2302,0.2423,0.3670] layer_gate_spline_l1:[0.0792,0.1283,0.1875,0.2163,0.2719,0.3177,0.2932,0.2859,0.2656,0.2243,0.2810]
+750/4500 train_loss: 3.2649 train_time: 1.9m tok/s: 5042607
+750/4500 swiglu_kan groups:16 knots:5 value_lin_mean:1.1193 value_bias_mean:-0.1379 gate_lin_mean:0.4857 value_spline_abs_mean:0.1852 gate_spline_abs_mean:0.2049 value_knot_means:[-0.0106,0.0896,0.2444,0.2785,-0.1182] gate_knot_means:[-0.1391,-0.0173,0.1540,0.2663,0.2186] layer_value_lin:[0.6564,0.7644,0.9036,1.0001,1.1740,1.3216,1.2373,1.2003,1.1791,1.1489,1.7264] layer_value_bias:[0.0544,-0.0498,-0.1275,-0.1761,-0.2286,-0.2917,-0.1917,-0.1460,-0.0957,-0.0684,-0.1952] layer_gate_lin:[0.0336,0.1336,0.2785,0.3616,0.5440,0.6907,0.6130,0.5825,0.5440,0.5065,1.0543] layer_value_spline_l1:[0.0728,0.0767,0.1273,0.1544,0.2004,0.2594,0.2122,0.2032,0.1863,0.2033,0.3415] layer_gate_spline_l1:[0.0829,0.1389,0.1687,0.2023,0.2521,0.2893,0.2580,0.2382,0.2131,0.1493,0.2608]
+1000/4500 train_loss: 3.2680 train_time: 2.6m tok/s: 5041750
+1000/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.9968 value_bias_mean:-0.1267 gate_lin_mean:0.4342 value_spline_abs_mean:0.1646 gate_spline_abs_mean:0.1813 value_knot_means:[-0.0160,0.0744,0.2011,0.2533,-0.0736] gate_knot_means:[-0.1355,-0.0306,0.0787,0.1789,0.2493] layer_value_lin:[0.6068,0.6908,0.8170,0.8971,1.0414,1.1588,1.0830,1.0543,1.0318,0.9848,1.5992] layer_value_bias:[0.0732,-0.0358,-0.1313,-0.1938,-0.2332,-0.2781,-0.1725,-0.1207,-0.0745,-0.0356,-0.1917] layer_gate_lin:[0.0542,0.1272,0.2508,0.3176,0.4650,0.5955,0.5268,0.5149,0.4872,0.4349,1.0022] layer_value_spline_l1:[0.0685,0.0836,0.1177,0.1485,0.1831,0.2326,0.1900,0.1777,0.1503,0.1620,0.2968] layer_gate_spline_l1:[0.0850,0.1419,0.1611,0.1829,0.2261,0.2604,0.2268,0.1987,0.1660,0.1019,0.2430]
+1250/4500 train_loss: 3.1286 train_time: 3.2m tok/s: 5042344
+1250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.8851 value_bias_mean:-0.1149 gate_lin_mean:0.3884 value_spline_abs_mean:0.1470 gate_spline_abs_mean:0.1593 value_knot_means:[-0.0190,0.0621,0.1614,0.2244,-0.0248] gate_knot_means:[-0.1250,-0.0445,0.0087,0.0936,0.2435] layer_value_lin:[0.5489,0.6166,0.7358,0.8033,0.9208,1.0128,0.9466,0.9250,0.8962,0.8451,1.4850] layer_value_bias:[0.1022,-0.0151,-0.1277,-0.2080,-0.2288,-0.2666,-0.1689,-0.1075,-0.0529,-0.0063,-0.1843] layer_gate_lin:[0.0704,0.1236,0.2301,0.2702,0.3885,0.5090,0.4561,0.4526,0.4288,0.3802,0.9625] layer_value_spline_l1:[0.0607,0.0874,0.1139,0.1419,0.1678,0.2113,0.1668,0.1491,0.1249,0.1275,0.2659] layer_gate_spline_l1:[0.0955,0.1491,0.1541,0.1678,0.1900,0.2189,0.1843,0.1575,0.1249,0.0833,0.2265]
+1500/4500 train_loss: 3.1955 train_time: 3.9m tok/s: 5043701
+1500/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.7690 value_bias_mean:-0.1014 gate_lin_mean:0.3415 value_spline_abs_mean:0.1268 gate_spline_abs_mean:0.1404 value_knot_means:[-0.0235,0.0483,0.1196,0.1909,0.0307] gate_knot_means:[-0.1054,-0.0635,-0.0628,0.0058,0.2199] layer_value_lin:[0.4693,0.5187,0.6395,0.7037,0.8142,0.8777,0.8187,0.7953,0.7628,0.7056,1.3534] layer_value_bias:[0.1359,0.0127,-0.1123,-0.2160,-0.2398,-0.2698,-0.1612,-0.0783,-0.0396,0.0188,-0.1652] layer_gate_lin:[0.0860,0.1299,0.2060,0.2248,0.3222,0.4212,0.3781,0.3895,0.3694,0.3297,0.8995] layer_value_spline_l1:[0.0452,0.0895,0.1093,0.1313,0.1512,0.1852,0.1418,0.1163,0.1015,0.0996,0.2243] layer_gate_spline_l1:[0.1115,0.1628,0.1495,0.1495,0.1590,0.1722,0.1382,0.1232,0.1090,0.0849,0.1850]
+1750/4500 train_loss: 3.1302 train_time: 4.5m tok/s: 5045151
+1750/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6683 value_bias_mean:-0.0913 gate_lin_mean:0.3070 value_spline_abs_mean:0.1102 gate_spline_abs_mean:0.1349 value_knot_means:[-0.0196,0.0421,0.0865,0.1582,0.0739] gate_knot_means:[-0.0795,-0.0827,-0.1191,-0.0636,0.1940] layer_value_lin:[0.3930,0.4320,0.5555,0.6269,0.7298,0.7783,0.7161,0.6857,0.6500,0.5899,1.1939] layer_value_bias:[0.1740,0.0356,-0.0983,-0.2247,-0.2453,-0.2891,-0.1673,-0.0674,-0.0278,0.0375,-0.1319] layer_gate_lin:[0.0956,0.1359,0.1964,0.2022,0.2710,0.3656,0.3282,0.3426,0.3286,0.3030,0.8074] layer_value_spline_l1:[0.0354,0.0825,0.1033,0.1177,0.1371,0.1626,0.1248,0.0991,0.0825,0.0808,0.1868] layer_gate_spline_l1:[0.1206,0.1689,0.1566,0.1476,0.1529,0.1392,0.1088,0.1228,0.1214,0.1041,0.1414]
+layer_loop:enabled step:1995 frac:0.350 encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+2000/4500 train_loss: 3.2376 train_time: 5.2m tok/s: 5038491
+2000/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6308 value_bias_mean:-0.0924 gate_lin_mean:0.3043 value_spline_abs_mean:0.1081 gate_spline_abs_mean:0.1305 value_knot_means:[0.0015,0.0528,0.0784,0.1423,0.1019] gate_knot_means:[-0.0546,-0.0826,-0.1298,-0.0813,0.1942] layer_value_lin:[0.3407,0.3899,0.5714,0.6447,0.6923,0.7056,0.7156,0.6786,0.6167,0.5201,1.0632] layer_value_bias:[0.2118,0.0526,-0.0998,-0.2778,-0.2715,-0.2920,-0.1548,-0.0638,-0.0498,0.0422,-0.1137] layer_gate_lin:[0.0840,0.1322,0.2361,0.2427,0.2673,0.2958,0.3461,0.3678,0.3449,0.2979,0.7325] layer_value_spline_l1:[0.0313,0.0763,0.1211,0.1143,0.1239,0.1401,0.1515,0.1170,0.0812,0.0697,0.1623] layer_gate_spline_l1:[0.1301,0.1730,0.1322,0.1490,0.1701,0.1347,0.0910,0.1067,0.1103,0.1134,0.1248]
+2250/4500 train_loss: 3.0953 train_time: 6.2m tok/s: 4756923
+2250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6151 value_bias_mean:-0.0953 gate_lin_mean:0.3079 value_spline_abs_mean:0.0970 gate_spline_abs_mean:0.1285 value_knot_means:[0.0098,0.0501,0.0655,0.1218,0.1031] gate_knot_means:[-0.0503,-0.0874,-0.1335,-0.0879,0.1905] layer_value_lin:[0.3240,0.3920,0.5516,0.6280,0.7021,0.7252,0.6954,0.6535,0.5970,0.5088,0.9886] layer_value_bias:[0.2108,0.0580,-0.0944,-0.2703,-0.2823,-0.3252,-0.1805,-0.0656,-0.0332,0.0351,-0.1005] layer_gate_lin:[0.1088,0.1452,0.2202,0.2265,0.2756,0.3308,0.3350,0.3640,0.3485,0.3236,0.7092] layer_value_spline_l1:[0.0280,0.0718,0.0966,0.1047,0.1166,0.1394,0.1211,0.0962,0.0746,0.0666,0.1514] layer_gate_spline_l1:[0.1195,0.1727,0.1465,0.1476,0.1497,0.1174,0.0965,0.1183,0.1156,0.1081,0.1216]
+2250/4500 val_loss: 3.0492 val_bpb: 1.1804
+2250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6151 value_bias_mean:-0.0953 gate_lin_mean:0.3079 value_spline_abs_mean:0.0970 gate_spline_abs_mean:0.1285 value_knot_means:[0.0098,0.0501,0.0655,0.1218,0.1031] gate_knot_means:[-0.0503,-0.0874,-0.1335,-0.0879,0.1905] layer_value_lin:[0.3240,0.3920,0.5516,0.6280,0.7021,0.7252,0.6954,0.6535,0.5970,0.5088,0.9886] layer_value_bias:[0.2108,0.0580,-0.0944,-0.2703,-0.2823,-0.3252,-0.1805,-0.0656,-0.0332,0.0351,-0.1005] layer_gate_lin:[0.1088,0.1452,0.2202,0.2265,0.2756,0.3308,0.3350,0.3640,0.3485,0.3236,0.7092] layer_value_spline_l1:[0.0280,0.0718,0.0966,0.1047,0.1166,0.1394,0.1211,0.0962,0.0746,0.0666,0.1514] layer_gate_spline_l1:[0.1195,0.1727,0.1465,0.1476,0.1497,0.1174,0.0965,0.1183,0.1156,0.1081,0.1216]
+2250/4500 activation_probe layer:0 n:65536 p01:-6.0938 p10:-3.2812 p50:-0.0443 p90:3.2344 p99:6.3750
+2250/4500 activation_probe layer:1 n:65536 p01:-4.9688 p10:-2.9219 p50:-0.4746 p90:2.1562 p99:4.5938
+2250/4500 activation_probe layer:2 n:65536 p01:-4.2812 p10:-2.5312 p50:-0.5898 p90:1.5703 p99:3.5469
+2250/4500 activation_probe layer:3 n:65536 p01:-3.2031 p10:-1.8672 p50:-0.2100 p90:1.5859 p99:3.2500
+2250/4500 activation_probe layer:3 n:65536 p01:-3.1875 p10:-1.8750 p50:-0.2539 p90:1.4219 p99:2.8906
+2250/4500 activation_probe layer:3 n:65536 p01:-3.1719 p10:-1.8516 p50:-0.1973 p90:1.5078 p99:3.0312
+2250/4500 activation_probe layer:4 n:65536 p01:-3.0938 p10:-1.7812 p50:-0.0239 p90:1.9062 p99:3.5312
+2250/4500 activation_probe layer:4 n:65536 p01:-3.4688 p10:-2.0312 p50:-0.2285 p90:1.8125 p99:3.2969
+2250/4500 activation_probe layer:4 n:65536 p01:-3.3281 p10:-2.0312 p50:-0.2500 p90:1.7656 p99:3.2188
+2250/4500 activation_probe layer:5 n:65536 p01:-3.1875 p10:-1.8594 p50:-0.1895 p90:1.5938 p99:3.2446
+2250/4500 activation_probe layer:5 n:65536 p01:-3.0000 p10:-1.7812 p50:-0.0879 p90:1.7031 p99:3.1719
+2250/4500 activation_probe layer:5 n:65536 p01:-3.0781 p10:-1.8828 p50:-0.1699 p90:1.6406 p99:3.1562
+2250/4500 activation_probe layer:6 n:65536 p01:-2.7031 p10:-1.6250 p50:-0.2168 p90:1.3750 p99:3.0781
+2250/4500 activation_probe layer:7 n:65536 p01:-3.0000 p10:-1.7656 p50:-0.2100 p90:1.2031 p99:2.7969
+2250/4500 activation_probe layer:8 n:65536 p01:-2.1562 p10:-1.1719 p50:0.0725 p90:1.5312 p99:2.7344
+2250/4500 activation_probe layer:9 n:65536 p01:-2.2344 p10:-1.2812 p50:-0.2178 p90:0.8438 p99:1.8750
+2250/4500 activation_probe layer:10 n:65536 p01:-1.1172 p10:-0.5859 p50:0.0198 p90:0.8516 p99:1.5547
+2500/4500 train_loss: 3.0712 train_time: 7.2m tok/s: 4567423
+2500/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6116 value_bias_mean:-0.0987 gate_lin_mean:0.3092 value_spline_abs_mean:0.0967 gate_spline_abs_mean:0.1230 value_knot_means:[0.0175,0.0524,0.0648,0.1156,0.1098] gate_knot_means:[-0.0439,-0.0836,-0.1235,-0.0792,0.1957] layer_value_lin:[0.3288,0.4063,0.5688,0.6421,0.7152,0.7326,0.6918,0.6481,0.5864,0.4901,0.9180] layer_value_bias:[0.2168,0.0569,-0.1070,-0.2794,-0.2848,-0.3326,-0.1825,-0.0747,-0.0359,0.0344,-0.0966] layer_gate_lin:[0.1213,0.1499,0.2288,0.2344,0.2813,0.3406,0.3305,0.3664,0.3478,0.3288,0.6711] layer_value_spline_l1:[0.0262,0.0708,0.0989,0.1073,0.1156,0.1426,0.1219,0.0988,0.0727,0.0656,0.1432] layer_gate_spline_l1:[0.1126,0.1687,0.1452,0.1414,0.1397,0.1092,0.0909,0.1119,0.1103,0.1029,0.1205]
+2750/4500 train_loss: 3.0080 train_time: 8.1m tok/s: 4422735
+2750/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6152 value_bias_mean:-0.1040 gate_lin_mean:0.3131 value_spline_abs_mean:0.0965 gate_spline_abs_mean:0.1186 value_knot_means:[0.0237,0.0546,0.0654,0.1112,0.1143] gate_knot_means:[-0.0410,-0.0800,-0.1129,-0.0701,0.1995] layer_value_lin:[0.3426,0.4229,0.5961,0.6558,0.7264,0.7413,0.6978,0.6527,0.5850,0.4819,0.8649] layer_value_bias:[0.2192,0.0557,-0.1202,-0.2873,-0.2894,-0.3400,-0.1915,-0.0819,-0.0398,0.0278,-0.0961] layer_gate_lin:[0.1361,0.1565,0.2404,0.2379,0.2876,0.3442,0.3348,0.3716,0.3514,0.3382,0.6450] layer_value_spline_l1:[0.0249,0.0692,0.0998,0.1077,0.1166,0.1440,0.1257,0.1007,0.0734,0.0634,0.1366] layer_gate_spline_l1:[0.1071,0.1661,0.1425,0.1366,0.1340,0.1026,0.0845,0.1054,0.1051,0.0990,0.1221]
+3000/4500 train_loss: 3.0204 train_time: 9.1m tok/s: 4309168
+3000/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6213 value_bias_mean:-0.1083 gate_lin_mean:0.3144 value_spline_abs_mean:0.0988 gate_spline_abs_mean:0.1140 value_knot_means:[0.0294,0.0578,0.0690,0.1114,0.1190] gate_knot_means:[-0.0386,-0.0752,-0.1007,-0.0584,0.2046] layer_value_lin:[0.3570,0.4412,0.6147,0.6677,0.7361,0.7509,0.7067,0.6603,0.5925,0.4824,0.8243] layer_value_bias:[0.2173,0.0545,-0.1238,-0.2934,-0.2917,-0.3476,-0.1992,-0.0855,-0.0469,0.0205,-0.0955] layer_gate_lin:[0.1439,0.1574,0.2453,0.2387,0.2879,0.3451,0.3396,0.3765,0.3547,0.3457,0.6240] layer_value_spline_l1:[0.0248,0.0717,0.1029,0.1101,0.1201,0.1508,0.1331,0.1024,0.0752,0.0645,0.1311] layer_gate_spline_l1:[0.1030,0.1629,0.1372,0.1327,0.1278,0.0972,0.0810,0.0981,0.0968,0.0937,0.1233]
+3250/4500 train_loss: 3.0396 train_time: 10.1m tok/s: 4217622
+3250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6318 value_bias_mean:-0.1139 gate_lin_mean:0.3182 value_spline_abs_mean:0.1017 gate_spline_abs_mean:0.1096 value_knot_means:[0.0346,0.0612,0.0736,0.1124,0.1198] gate_knot_means:[-0.0382,-0.0693,-0.0870,-0.0454,0.2086] layer_value_lin:[0.3741,0.4639,0.6359,0.6807,0.7472,0.7633,0.7221,0.6736,0.6057,0.4884,0.7947] layer_value_bias:[0.2130,0.0555,-0.1342,-0.3024,-0.2966,-0.3577,-0.2067,-0.0899,-0.0502,0.0127,-0.0967] layer_gate_lin:[0.1531,0.1571,0.2483,0.2406,0.2924,0.3514,0.3477,0.3845,0.3613,0.3531,0.6103] layer_value_spline_l1:[0.0249,0.0718,0.1035,0.1154,0.1246,0.1576,0.1377,0.1083,0.0778,0.0651,0.1313] layer_gate_spline_l1:[0.0970,0.1564,0.1338,0.1277,0.1235,0.0919,0.0808,0.0933,0.0901,0.0866,0.1240]
+3500/4500 train_loss: 2.9262 train_time: 11.1m tok/s: 4137140
+3500/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6454 value_bias_mean:-0.1208 gate_lin_mean:0.3226 value_spline_abs_mean:0.1054 gate_spline_abs_mean:0.1057 value_knot_means:[0.0398,0.0652,0.0792,0.1158,0.1205] gate_knot_means:[-0.0374,-0.0614,-0.0718,-0.0307,0.2123] layer_value_lin:[0.3928,0.4848,0.6584,0.6963,0.7631,0.7778,0.7405,0.6889,0.6210,0.4978,0.7777] layer_value_bias:[0.2098,0.0472,-0.1480,-0.3117,-0.3063,-0.3631,-0.2120,-0.0968,-0.0550,0.0075,-0.1002] layer_gate_lin:[0.1588,0.1622,0.2556,0.2461,0.2964,0.3542,0.3513,0.3925,0.3659,0.3610,0.6041] layer_value_spline_l1:[0.0258,0.0727,0.1070,0.1195,0.1313,0.1637,0.1465,0.1124,0.0816,0.0682,0.1307] layer_gate_spline_l1:[0.0921,0.1506,0.1288,0.1233,0.1174,0.0868,0.0879,0.0895,0.0822,0.0788,0.1257]
+3750/4500 train_loss: 2.8829 train_time: 12.1m tok/s: 4074532
+3750/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6613 value_bias_mean:-0.1282 gate_lin_mean:0.3290 value_spline_abs_mean:0.1091 gate_spline_abs_mean:0.1029 value_knot_means:[0.0449,0.0691,0.0860,0.1198,0.1198] gate_knot_means:[-0.0380,-0.0527,-0.0553,-0.0145,0.2139] layer_value_lin:[0.4107,0.5096,0.6779,0.7116,0.7744,0.7930,0.7610,0.7110,0.6417,0.5129,0.7703] layer_value_bias:[0.2069,0.0404,-0.1574,-0.3222,-0.3111,-0.3743,-0.2214,-0.1047,-0.0637,0.0012,-0.1035] layer_gate_lin:[0.1668,0.1615,0.2619,0.2488,0.2998,0.3614,0.3601,0.4070,0.3771,0.3705,0.6038] layer_value_spline_l1:[0.0270,0.0727,0.1110,0.1258,0.1352,0.1706,0.1542,0.1186,0.0861,0.0694,0.1296] layer_gate_spline_l1:[0.0865,0.1423,0.1230,0.1178,0.1112,0.0851,0.0971,0.0920,0.0781,0.0713,0.1275]
+4000/4500 train_loss: 2.8879 train_time: 13.1m tok/s: 4015367
+4000/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6784 value_bias_mean:-0.1357 gate_lin_mean:0.3368 value_spline_abs_mean:0.1130 gate_spline_abs_mean:0.1015 value_knot_means:[0.0505,0.0744,0.0933,0.1243,0.1166] gate_knot_means:[-0.0380,-0.0432,-0.0388,0.0025,0.2169] layer_value_lin:[0.4267,0.5308,0.6999,0.7277,0.7907,0.8081,0.7845,0.7333,0.6621,0.5279,0.7701] layer_value_bias:[0.2021,0.0319,-0.1716,-0.3287,-0.3188,-0.3820,-0.2306,-0.1128,-0.0698,-0.0054,-0.1065] layer_gate_lin:[0.1732,0.1678,0.2695,0.2509,0.3064,0.3682,0.3728,0.4198,0.3880,0.3802,0.6082] layer_value_spline_l1:[0.0282,0.0746,0.1135,0.1307,0.1393,0.1785,0.1617,0.1238,0.0890,0.0721,0.1312] layer_gate_spline_l1:[0.0798,0.1341,0.1206,0.1133,0.1050,0.0849,0.1085,0.0980,0.0766,0.0671,0.1286]
+4250/4500 train_loss: 2.8031 train_time: 14.0m tok/s: 3969873
+4250/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6921 value_bias_mean:-0.1403 gate_lin_mean:0.3447 value_spline_abs_mean:0.1166 gate_spline_abs_mean:0.1010 value_knot_means:[0.0552,0.0790,0.0995,0.1286,0.1145] gate_knot_means:[-0.0376,-0.0348,-0.0249,0.0157,0.2171] layer_value_lin:[0.4392,0.5488,0.7168,0.7373,0.8015,0.8208,0.8023,0.7526,0.6791,0.5401,0.7751] layer_value_bias:[0.1980,0.0240,-0.1770,-0.3340,-0.3235,-0.3878,-0.2341,-0.1146,-0.0740,-0.0082,-0.1118] layer_gate_lin:[0.1785,0.1716,0.2767,0.2573,0.3134,0.3777,0.3826,0.4321,0.3985,0.3884,0.6151] layer_value_spline_l1:[0.0300,0.0741,0.1173,0.1352,0.1437,0.1844,0.1687,0.1270,0.0938,0.0759,0.1325] layer_gate_spline_l1:[0.0735,0.1292,0.1195,0.1083,0.1004,0.0871,0.1186,0.1048,0.0784,0.0631,0.1285]
+4446/4500 val_loss: 2.8187 val_bpb: 1.0912
+4446/4500 swiglu_kan groups:16 knots:5 value_lin_mean:0.6969 value_bias_mean:-0.1421 gate_lin_mean:0.3475 value_spline_abs_mean:0.1178 gate_spline_abs_mean:0.1011 value_knot_means:[0.0568,0.0806,0.1017,0.1299,0.1132] gate_knot_means:[-0.0373,-0.0320,-0.0203,0.0201,0.2174] layer_value_lin:[0.4425,0.5551,0.7222,0.7419,0.8051,0.8244,0.8090,0.7584,0.6849,0.5451,0.7775] layer_value_bias:[0.1969,0.0223,-0.1812,-0.3354,-0.3250,-0.3886,-0.2363,-0.1173,-0.0766,-0.0095,-0.1122] layer_gate_lin:[0.1801,0.1718,0.2795,0.2603,0.3150,0.3800,0.3871,0.4368,0.4014,0.3924,0.6182] layer_value_spline_l1:[0.0305,0.0745,0.1177,0.1363,0.1450,0.1864,0.1710,0.1291,0.0944,0.0765,0.1344] layer_gate_spline_l1:[0.0720,0.1285,0.1184,0.1072,0.0986,0.0884,0.1221,0.1065,0.0794,0.0620,0.1291]
+4446/4500 activation_probe layer:0 n:65536 p01:-4.5312 p10:-2.3906 p50:-0.1963 p90:2.1250 p99:4.5312
+4446/4500 activation_probe layer:1 n:65536 p01:-3.8438 p10:-2.3750 p50:-0.6602 p90:1.1172 p99:2.9375
+4446/4500 activation_probe layer:2 n:65536 p01:-2.8906 p10:-1.6406 p50:-0.2344 p90:1.2578 p99:2.5781
+4446/4500 activation_probe layer:3 n:65536 p01:-2.3594 p10:-1.3828 p50:-0.1177 p90:1.1328 p99:2.3281
+4446/4500 activation_probe layer:3 n:65536 p01:-2.3906 p10:-1.4375 p50:-0.2188 p90:0.9883 p99:2.0312
+4446/4500 activation_probe layer:3 n:65536 p01:-2.2344 p10:-1.3516 p50:-0.2002 p90:0.9609 p99:1.9453
+4446/4500 activation_probe layer:4 n:65536 p01:-2.1875 p10:-1.2031 p50:0.0233 p90:1.3984 p99:2.5000
+4446/4500 activation_probe layer:4 n:65536 p01:-2.5312 p10:-1.4062 p50:-0.0718 p90:1.5469 p99:2.7188
+4446/4500 activation_probe layer:4 n:65536 p01:-2.3594 p10:-1.4531 p50:-0.1748 p90:1.3516 p99:2.3906
+4446/4500 activation_probe layer:5 n:65536 p01:-2.6875 p10:-1.5781 p50:-0.1904 p90:1.2344 p99:2.5312
+4446/4500 activation_probe layer:5 n:65536 p01:-2.6406 p10:-1.5703 p50:-0.1377 p90:1.2812 p99:2.5156
+4446/4500 activation_probe layer:5 n:65536 p01:-2.3438 p10:-1.4609 p50:-0.1641 p90:1.1797 p99:2.3594
+4446/4500 activation_probe layer:6 n:65536 p01:-1.7422 p10:-1.0000 p50:-0.0693 p90:1.0469 p99:2.1094
+4446/4500 activation_probe layer:7 n:65536 p01:-2.0000 p10:-1.2031 p50:-0.1089 p90:0.9297 p99:2.0469
+4446/4500 activation_probe layer:8 n:65536 p01:-1.6250 p10:-0.8672 p50:0.0540 p90:1.0000 p99:1.7734
+4446/4500 activation_probe layer:9 n:65536 p01:-1.5078 p10:-0.8320 p50:-0.1299 p90:0.6094 p99:1.3750
+4446/4500 activation_probe layer:10 n:65536 p01:-0.8555 p10:-0.4648 p50:0.0103 p90:0.7109 p99:1.2969
+stopping_early: wallclock_cap train_time: 887789ms step: 4446/4500
+peak memory allocated: 46153 MiB reserved: 46788 MiB
+ema:applying EMA weights
+pre-quantization post-ema val_loss:2.81534706 val_bpb:1.08990858 eval_time:7818ms
+Serialized model: 134016231 bytes
+Code size: 93323 bytes
+Serialized KAN sidecar: final_model.kan_shapes.pt (113580 bytes)
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 29.8s
+Quantized weights:
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int8): tok_emb.weight
+  passthrough (float16): blocks.attn.q_gain, blocks.attn_scale, blocks.mlp.kan_gate_linear_param, blocks.mlp.kan_gate_spline_param, blocks.mlp.kan_value_bias_param, blocks.mlp.kan_value_linear_param, blocks.mlp.kan_value_spline_param, blocks.mlp_scale, blocks.resid_mix, skip_gates, skip_weights
+Serialized model quantized+brotli: 15840461 bytes
+Total submission size quantized+brotli: 15933784 bytes
+quantized val_loss:2.84663669 val_bpb:1.10202177 eval_time:11461ms
+quantized_sliding_window val_loss:2.80340238 val_bpb:1.08528442 eval_time:143029ms
