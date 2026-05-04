@@ -289,17 +289,41 @@ class RMSNorm(nn.Module):
         return F.rms_norm(x, (x.size(-1),), eps=self.eps)
 
 
+class LoraProjectedLinearFn(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, x, weight, bias, a, b):
+        del b
+        w = weight.to(x.dtype)
+        bias_cast = bias.to(x.dtype) if bias is not None else None
+        ctx.save_for_backward(x, weight, a)
+        ctx.has_bias = bias is not None
+        return F.linear(x, w, bias_cast)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        x, weight, a = ctx.saved_tensors
+        grad_x = grad_out.matmul(weight.to(grad_out.dtype))
+        grad_bias = None
+        if ctx.has_bias:
+            grad_bias = grad_out.reshape(-1, grad_out.size(-1)).sum(dim=0)
+        x_a = F.linear(x, a.to(x.dtype))
+        grad_b = grad_out.reshape(-1, grad_out.size(-1)).T.float() @ x_a.reshape(
+            -1, x_a.size(-1)
+        ).float()
+        return (grad_x, None, grad_bias, None, grad_b)
+
+
 class CastedLinear(nn.Linear):
 
     def forward(self, x):
+        if getattr(self, "lora_gp_enabled", False):
+            return LoraProjectedLinearFn.apply(
+                x, self.weight, self.bias, self.lora_gp_A, self.lora_gp_B
+            )
         w = self.weight.to(x.dtype)
         bias = self.bias.to(x.dtype) if self.bias is not None else None
-        out = F.linear(x, w, bias)
-        if getattr(self, "lora_gp_enabled", False):
-            a = self.lora_gp_A.to(dtype=x.dtype)
-            b = self.lora_gp_B.to(dtype=x.dtype)
-            out = out + F.linear(F.linear(x, a), b)
-        return out
+        return F.linear(x, w, bias)
 
     def enable_lora_gradient_projection(self, rank, device):
         if self.bias is not None:
